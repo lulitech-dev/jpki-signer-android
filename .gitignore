@@ -1,0 +1,18 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+captures/
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# Local reference implementation; a clone with its own .git.
+jpki-pdf-signer/
+
+# Local working notes, deliberately untracked.
+PLAN.md
+CLAUDE.md

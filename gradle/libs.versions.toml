@@ -1,0 +1,32 @@
+[versions]
+# AGP 9 has built-in Kotlin support and rejects the standalone
+# org.jetbrains.kotlin.android plugin. It supplies KGP itself (2.2.10 as of
+# AGP 9.0); override only via a buildscript classpath in the root build file.
+agp = "9.3.1"
+pdfboxAndroid = "2.0.27.0"
+# BouncyCastle: one FAMILY (jdk15to18), latest patch of each artifact. See
+# PLAN.md §5.2. The jdk15on / jdk15to18 / jdk18on variants share the same
+# org.bouncycastle.* packages, so mixing families causes duplicate classes.
+# pdfbox-android pulls bcprov-jdk15to18, which fixes the family as jdk15to18.
+#
+# Do NOT collapse these to one version string: the artifacts patch
+# independently, and bcutil 1.85 has a packaging bug that duplicates
+# bcprov's org.bouncycastle.asn1.iana.IANAObjectIdentifiers, which fails
+# :app:checkDebugDuplicateClasses. bcutil 1.85.1 is the fix.
+bcprov = "1.85.2"
+bcpkix = "1.85"
+bcutil = "1.85.1"
+junit = "4.13.2"
+coreKtx = "1.15.0"
+
+[libraries]
+pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfboxAndroid" }
+bc-prov = { module = "org.bouncycastle:bcprov-jdk15to18", version.ref = "bcprov" }
+bc-pkix = { module = "org.bouncycastle:bcpkix-jdk15to18", version.ref = "bcpkix" }
+bc-util = { module = "org.bouncycastle:bcutil-jdk15to18", version.ref = "bcutil" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+junit = { module = "junit:junit", version.ref = "junit" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
