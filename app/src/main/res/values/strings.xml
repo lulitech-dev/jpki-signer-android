@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Default (Japanese). English lives in values-en/. -->
+<resources>
+    <string name="app_name">JPKI 署名</string>
+
+    <!-- Document list -->
+    <string name="documents_title">書類</string>
+    <string name="documents_empty_title">書類がありません</string>
+    <string name="documents_empty_body">ほかのアプリから PDF を共有すると、ここに追加されます。</string>
+    <string name="documents_signature_count">署名 %1$d 件</string>
+    <string name="documents_no_signature">署名なし</string>
+    <string name="documents_delete">削除</string>
+    <string name="documents_delete_title">この書類を削除しますか？</string>
+    <string name="documents_delete_body">「%1$s」をこのアプリから削除します。この操作は取り消せません。</string>
+
+    <!-- Document detail -->
+    <string name="document_signatures_title">署名の履歴</string>
+    <string name="document_no_signatures">この書類にはまだ署名がありません。</string>
+    <string name="document_sign">署名する</string>
+    <string name="document_share">共有</string>
+    <string name="signature_position">署名 #%1$d</string>
+    <string name="signature_integrity_failed">この署名を確認できませんでした。ファイルが壊れているおそれがあります。</string>
+    <string name="signature_delete_title">署名を削除しますか？</string>
+    <string name="signature_delete_body_single">署名 #%1$d を削除します。この操作は取り消せません。</string>
+    <string name="signature_delete_body_cascade">署名 #%1$d を削除すると、後続の %2$d 件も削除されます。この操作は取り消せません。</string>
+    <string name="signature_delete_confirm">削除する</string>
+    <string name="cancel">キャンセル</string>
+
+    <!-- Signing flow -->
+    <string name="sign_title">電子署名</string>
+    <string name="sign_reason">理由（任意）</string>
+    <string name="sign_location">場所（任意）</string>
+    <string name="sign_pin">署名用パスワード（6〜16 桁の英数字）</string>
+    <string name="sign_pin_uppercase">英字は大文字で入力してください</string>
+    <string name="sign_attempts_remaining">残り試行回数: %1$d 回</string>
+    <string name="sign_attempts_warning">残り %1$d 回です。5 回連続で間違えると市区町村の窓口で再設定が必要になります。</string>
+    <string name="sign_start">カードをかざす</string>
+    <string name="sign_hold_card">マイナンバーカードを端末の背面にかざしたまま、動かさないでください。</string>
+    <string name="sign_in_progress">署名しています…</string>
+    <string name="sign_success">署名が完了しました。</string>
+    <string name="sign_failed">署名できませんでした: %1$s</string>
+    <string name="sign_nfc_disabled">NFC が無効です。設定で有効にしてください。</string>
+    <string name="sign_nfc_unavailable">この端末は NFC に対応していません。</string>
+    <string name="import_failed_title">取り込めませんでした</string>
+    <string name="close">閉じる</string>
+    <string name="a11y_delete_document">「%1$s」を削除</string>
+    <string name="a11y_delete_signature">署名 #%1$d を削除</string>
+    <string name="a11y_delete_signature_cascade">署名 #%1$d と後続の %2$d 件を削除</string>
+    <string name="import_rejected_unreadable">この PDF は読み取れませんでした。ファイルが壊れているか、PDF ではない可能性があります。</string>
+    <string name="import_rejected_encrypted">パスワード保護された PDF には署名できません。保護を解除してからお試しください。</string>
+    <string name="import_rejected_no_pages">この PDF にはページがありません。</string>
+    <string name="signature_not_removable">この署名は削除できません</string>
+    <string name="back">戻る</string>
+    <string name="export_title">共有するファイル名</string>
+    <string name="export_name_label">ファイル名</string>
+    <string name="export_error_blank">ファイル名を入力してください</string>
+    <string name="export_error_separators">ファイル名に / や \\ は使えません</string>
+    <string name="export_error_too_long">ファイル名が長すぎます（255 バイトまで）</string>
+    <string name="export_error_not_pdf">ファイル名は .pdf で終わる必要があります</string>
+    <string name="document_trailing_changes">最後の署名より後に、この文書は変更されています。</string>
+    <string name="sign_changes_not_permitted">この文書は変更が許可されていないため、署名できません。</string>
+</resources>

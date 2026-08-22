@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JPKI Signer</string>
+
+    <!-- Document list -->
+    <string name="documents_title">Documents</string>
+    <string name="documents_empty_title">No documents yet</string>
+    <string name="documents_empty_body">Share a PDF from another app and it will appear here.</string>
+    <string name="documents_signature_count">%1$d signature(s)</string>
+    <string name="documents_no_signature">Not signed</string>
+    <string name="documents_delete">Delete</string>
+    <string name="documents_delete_title">Delete this document?</string>
+    <string name="documents_delete_body">"%1$s" will be removed from this app. This cannot be undone.</string>
+
+    <!-- Document detail -->
+    <string name="document_signatures_title">Signature history</string>
+    <string name="document_no_signatures">This document has no signatures yet.</string>
+    <string name="document_sign">Sign</string>
+    <string name="document_share">Share</string>
+    <string name="signature_position">Signature #%1$d</string>
+    <string name="signature_integrity_failed">This signature could not be checked. The file may be damaged.</string>
+    <string name="signature_delete_title">Delete signature?</string>
+    <string name="signature_delete_body_single">Signature #%1$d will be deleted. This cannot be undone.</string>
+    <string name="signature_delete_body_cascade">Deleting signature #%1$d will also delete the %2$d signature(s) after it. This cannot be undone.</string>
+    <string name="signature_delete_confirm">Delete</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- Signing flow -->
+    <string name="sign_title">Sign</string>
+    <string name="sign_reason">Reason (optional)</string>
+    <string name="sign_location">Location (optional)</string>
+    <string name="sign_pin">Signature PIN (6-16 letters and digits)</string>
+    <string name="sign_pin_uppercase">Letters must be uppercase</string>
+    <string name="sign_attempts_remaining">Attempts remaining: %1$d</string>
+    <string name="sign_attempts_warning">Only %1$d attempt(s) left. After 5 wrong entries the PIN must be reset at a municipal office.</string>
+    <string name="sign_start">Hold the card</string>
+    <string name="sign_hold_card">Hold your My Number Card against the back of the phone and keep it still.</string>
+    <string name="sign_in_progress">Signing…</string>
+    <string name="sign_success">Signed successfully.</string>
+    <string name="sign_failed">Could not sign: %1$s</string>
+    <string name="sign_nfc_disabled">NFC is off. Enable it in Settings.</string>
+    <string name="sign_nfc_unavailable">This device does not support NFC.</string>
+    <string name="import_failed_title">Could not import</string>
+    <string name="close">Close</string>
+    <string name="a11y_delete_document">Delete "%1$s"</string>
+    <string name="a11y_delete_signature">Delete signature #%1$d</string>
+    <string name="a11y_delete_signature_cascade">Delete signature #%1$d and the %2$d after it</string>
+    <string name="import_rejected_unreadable">This PDF could not be read. It may be damaged, or not a PDF at all.</string>
+    <string name="import_rejected_encrypted">Password-protected PDFs cannot be signed. Remove the protection and try again.</string>
+    <string name="import_rejected_no_pages">This PDF has no pages.</string>
+    <string name="signature_not_removable">This signature cannot be removed</string>
+    <string name="back">Back</string>
+    <string name="export_title">Share as</string>
+    <string name="export_name_label">File name</string>
+    <string name="export_error_blank">Enter a file name</string>
+    <string name="export_error_separators">A file name cannot contain / or \\</string>
+    <string name="export_error_too_long">File name is too long (255 bytes maximum)</string>
+    <string name="export_error_not_pdf">File name must end with .pdf</string>
+    <string name="document_trailing_changes">This document was changed after the last signature.</string>
+    <string name="sign_changes_not_permitted">This document does not permit changes, so it cannot be signed.</string>
+</resources>

@@ -64,7 +64,7 @@ object SignatureInspector {
                     @Suppress("UNCHECKED_CAST")
                     val selector = signer.sid as Selector<X509CertificateHolder>
                     val cert = signedData.certificates.getMatches(selector).first()
-                    signerCn = CertificateNames.commonNameOf(cert.encoded)
+                    signerCn = CertificateNames.holderName(cert.encoded)
                     integrityOk = signer.verify(buildVerifier(cert))
                 }.onFailure { error = "${it::class.java.simpleName}: ${it.message}" }
 

@@ -55,8 +55,22 @@ class JpkiSession(private val io: ApduTransceiver) {
         send(Apdu.selectFile(key.pinEf)).requireSuccess("SELECT PIN EF")
 
         val encoded = key.encodePin(pin)
+        // Deliberately the raw send: the generic wrapper's "lost contact" message
+        // would be wrong here, because losing the link mid-VERIFY has a
+        // consequence the user needs to know about.
         val response = try {
-            send(Apdu.verifyPin(encoded))
+            sendRaw(Apdu.verifyPin(encoded))
+        } catch (e: java.io.IOException) {
+            // The card left the field, or the link broke, at the one moment where
+            // we cannot tell what happened: the card may or may not have
+            // processed the VERIFY and decremented its counter. Do NOT retry --
+            // that is how one user action becomes two spent attempts. Say so
+            // plainly and let the next tap read the real counter.
+            throw CardException(
+                "lost contact with the card during PIN verification; " +
+                    "the attempt may or may not have been counted. " +
+                    "Re-read the remaining attempts before trying again.",
+            )
         } finally {
             encoded.fill(0)
         }
@@ -130,7 +144,24 @@ class JpkiSession(private val io: ApduTransceiver) {
         return out
     }
 
-    private fun send(command: ByteArray) = Response(io.transceive(command))
+    /**
+     * Sends one command.
+     *
+     * A dropped link surfaces as [CardException] rather than a raw
+     * [java.io.IOException], except in [verifyPin], which needs to say something
+     * more careful. Nothing here retries: a retry after an ambiguous failure can
+     * spend a second PIN attempt on a single user action.
+     */
+    private fun sendRaw(command: ByteArray): Response = Response(io.transceive(command))
+
+    private fun send(command: ByteArray): Response =
+        try {
+            sendRaw(command)
+        } catch (e: java.io.IOException) {
+            throw CardException(
+                "lost contact with the card; hold it still against the phone and try again",
+            )
+        }
 
     private companion object {
         const val CHUNK = 0xFF

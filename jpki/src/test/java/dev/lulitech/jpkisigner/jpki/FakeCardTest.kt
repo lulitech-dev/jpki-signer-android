@@ -3,6 +3,7 @@ package dev.lulitech.jpkisigner.jpki
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -105,5 +106,81 @@ class FakeCardTest {
             }
         }
         assertNull(JpkiSession(card).readCaCertificate(JpkiKey.DIGITAL_SIGNATURE))
+    }
+}
+
+/** Behaviour when the card leaves the field mid-command. */
+class CardLostTest {
+
+    /** Fails on the nth command with an IOException, as a removed card does. */
+    private class FlakyCard(private val failOnInstruction: Int) : ApduTransceiver {
+        override fun transceive(command: ByteArray): ByteArray {
+            val ins = command[1].toInt() and 0xFF
+            if (ins == failOnInstruction) throw java.io.IOException("Tag was lost")
+            return byteArrayOf(0x90.toByte(), 0x00)
+        }
+    }
+
+    @Test
+    fun `a dropped link during verify says the attempt is uncertain`() {
+        val session = JpkiSession(FlakyCard(failOnInstruction = 0x20))
+        val error = org.junit.Assert.assertThrows(CardException::class.java) {
+            session.verifyPin(JpkiKey.DIGITAL_SIGNATURE, "ABC123".toCharArray())
+        }
+        // The user must not be told "wrong PIN" or "nothing happened"; neither is known.
+        assertTrue(
+            "message must admit the attempt may have counted: ${error.message}",
+            error.message!!.contains("may or may not"),
+        )
+    }
+
+    @Test
+    fun `a dropped link during a read is reported as lost contact`() {
+        val session = JpkiSession(FlakyCard(failOnInstruction = 0xB0))
+        val error = org.junit.Assert.assertThrows(CardException::class.java) {
+            session.readCertificate(JpkiKey.AUTHENTICATION)
+        }
+        assertTrue(error.message!!.contains("lost contact"))
+    }
+
+    /** One VERIFY per call, no matter what the card answers. */
+    @Test
+    fun `a wrong pin is never retried`() {
+        var verifyCount = 0
+        val card = object : ApduTransceiver {
+            override fun transceive(command: ByteArray): ByteArray =
+                when (command[1].toInt() and 0xFF) {
+                    0x20 -> {
+                        if (command.size > 4) verifyCount++
+                        byteArrayOf(0x63, 0xC2.toByte())
+                    }
+                    else -> byteArrayOf(0x90.toByte(), 0x00)
+                }
+        }
+        val error = org.junit.Assert.assertThrows(CardException::class.java) {
+            JpkiSession(card).verifyPin(JpkiKey.DIGITAL_SIGNATURE, "ABC123".toCharArray())
+        }
+        assertEquals("exactly one VERIFY must be sent", 1, verifyCount)
+        assertTrue(error.message!!.contains("2 attempt"))
+    }
+
+    @Test
+    fun `a blocked pin points at the municipal window`() {
+        val card = object : ApduTransceiver {
+            override fun transceive(command: ByteArray): ByteArray =
+                when (command[1].toInt() and 0xFF) {
+                    0x20 -> if (command.size > 4) {
+                        byteArrayOf(0x69, 0x83.toByte())
+                    } else {
+                        byteArrayOf(0x63, 0xC0.toByte())
+                    }
+                    else -> byteArrayOf(0x90.toByte(), 0x00)
+                }
+        }
+        val error = org.junit.Assert.assertThrows(CardException::class.java) {
+            JpkiSession(card).verifyPin(JpkiKey.DIGITAL_SIGNATURE, "ABC123".toCharArray())
+        }
+        assertTrue(error.message!!.contains("blocked"))
+        assertTrue(error.statusWord!!.isPinBlocked)
     }
 }

@@ -19,10 +19,16 @@ import javax.crypto.Cipher
  */
 class SoftwareSignatureProvider(
     commonName: String = "署名 太郎",
+    /**
+     * When set, embedded in the JPKI name extension, mimicking a real
+     * 署名用証明書 where the subject CN is an opaque identifier and the holder's
+     * name lives in a private extension.
+     */
+    jpkiName: String? = null,
     private val keyPair: KeyPair = generateKeyPair(),
 ) : SignatureProvider {
 
-    private val certificate: ByteArray = selfSign(commonName, keyPair)
+    private val certificate: ByteArray = selfSign(commonName, jpkiName, keyPair)
 
     override fun signerCertificate(): ByteArray = certificate
 
@@ -44,17 +50,46 @@ class SoftwareSignatureProvider(
         fun generateKeyPair(): KeyPair =
             KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
 
-        fun selfSign(commonName: String, keyPair: KeyPair): ByteArray {
+        const val JPKI_NAME_OID = "1.2.392.200149.8.5.5.1"
+
+        fun selfSign(commonName: String, jpkiName: String?, keyPair: KeyPair): ByteArray {
             val name = X500Name("CN=$commonName")
             val now = System.currentTimeMillis()
-            return JcaX509v3CertificateBuilder(
+            val builder = JcaX509v3CertificateBuilder(
                 name,
                 BigInteger.valueOf(now),
                 Date(now - 86_400_000L),
                 Date(now + 3_650L * 86_400_000L),
                 name,
                 keyPair.public,
-            ).build(JcaContentSignerBuilder("SHA256withRSA").build(keyPair.private)).encoded
+            )
+            if (jpkiName != null) {
+                // Mirrors the real certificate: an otherName inside
+                // subjectAltName, not a standalone extension.
+                val otherName = org.bouncycastle.asn1.DERSequence(
+                    arrayOf(
+                        org.bouncycastle.asn1.ASN1ObjectIdentifier(JPKI_NAME_OID),
+                        org.bouncycastle.asn1.DERTaggedObject(
+                            true,
+                            0,
+                            org.bouncycastle.asn1.DERUTF8String(jpkiName),
+                        ),
+                    ),
+                )
+                builder.addExtension(
+                    org.bouncycastle.asn1.x509.Extension.subjectAlternativeName,
+                    false,
+                    org.bouncycastle.asn1.x509.GeneralNames(
+                        org.bouncycastle.asn1.x509.GeneralName(
+                            org.bouncycastle.asn1.x509.GeneralName.otherName,
+                            otherName,
+                        ),
+                    ),
+                )
+            }
+            return builder
+                .build(JcaContentSignerBuilder("SHA256withRSA").build(keyPair.private))
+                .encoded
         }
     }
 }

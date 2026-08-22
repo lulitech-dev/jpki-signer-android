@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
-    // Kotlin is built into AGP 9 — applying org.jetbrains.kotlin.android is an error.
+    // Kotlin itself is built into AGP 9 — applying org.jetbrains.kotlin.android is an
+    // error — but the Compose compiler plugin is still applied separately.
+    alias(libs.plugins.compose.compiler)
 }
 
 android {
@@ -30,6 +32,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    buildFeatures {
+        compose = true
+    }
 }
 
 kotlin {
@@ -42,4 +48,14 @@ dependencies {
     implementation(project(":jpki"))
     implementation(project(":pdf"))
     implementation(libs.androidx.core.ktx)
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.core)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+
+    testImplementation(libs.junit)
 }

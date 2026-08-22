@@ -1,11 +1,17 @@
 package dev.lulitech.jpkisigner.pdf
 
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.PDPropBuild
+import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.PDPropBuildDataDict
 import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.PDSignature
 import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.SignatureOptions
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Calendar
+
+/** The document forbids further change, so it must not be signed. */
+class ChangesNotPermittedException :
+    Exception("this document does not permit changes, so it cannot be signed")
 
 /** Optional metadata written into the signature dictionary. */
 data class SignParams(
@@ -31,20 +37,44 @@ class PdfSigner(private val provider: SignatureProvider) {
 
     fun sign(input: File, output: File, params: SignParams = SignParams()) {
         PDDocument.load(input).use { document ->
+            val holderName = CertificateNames.holderName(provider.signerCertificate())
+
             val signature = PDSignature().apply {
                 setFilter(PDSignature.FILTER_ADOBE_PPKLITE)
                 setSubFilter(PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED)
-                setName(CertificateNames.commonNameOf(provider.signerCertificate()))
-                params.reason?.let { setReason(it) }
+                setName(holderName)
+                // The reference always writes a Reason, defaulting to a sentence
+                // naming the signer, so the signature is self-describing in any
+                // viewer. Deliberately Japanese regardless of app locale: it is
+                // embedded in a document destined for Japanese authorities.
+                setReason(params.reason ?: "$holderName によって署名されています。")
                 params.location?.let { setLocation(it) }
                 params.contactInfo?.let { setContactInfo(it) }
                 signDate = Calendar.getInstance()
+
+                // Records which application produced the signature. Informational,
+                // but the reference emits it and it costs nothing.
+                // setPDPropBuildApp pairs with getApp(), so it is not a Kotlin
+                // property and has to be called by name.
+                propBuild = PDPropBuild().apply {
+                    setPDPropBuildApp(
+                        PDPropBuildDataDict().apply {
+                            setName(params.applicationName)
+                            setVersion(params.applicationVersion)
+                            setTrustedMode(true)
+                        },
+                    )
+                }
             }
 
-            // The first signature certifies the document; later ones are plain
-            // approval signatures. There can be at most one DocMDP per document.
-            if (DocMdp.existingPermission(document) == 0) {
-                DocMdp.apply(document, signature)
+            // A certification signature may forbid all further change. The
+            // reference refuses in that case rather than producing a signature
+            // that breaks the existing certification, and so do we.
+            //
+            // Note we never *write* DocMDP: our signatures are ordinary approval
+            // signatures. See DocMdp's documentation.
+            if (DocMdp.existingPermission(document) == DocMdp.NO_CHANGES_PERMITTED) {
+                throw ChangesNotPermittedException()
             }
 
             SignatureOptions().use { options ->

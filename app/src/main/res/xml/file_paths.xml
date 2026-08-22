@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Share-out only: grants read access to head.pdf under filesDir/documents. -->
+<paths>
+    <files-path
+        name="documents"
+        path="documents/" />
+</paths>

@@ -13,20 +13,52 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
-        android:label="JPKI Signer"
+        android:label="@string/app_name"
         android:supportsRtl="true">
 
-        <!-- Temporary card bring-up screen; replaced by the real UI. -->
         <activity
-            android:name=".CardDebugActivity"
+            android:name=".MainActivity"
             android:exported="true"
-            android:label="JPKI Card Debug"
+            android:label="@string/app_name"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Import path 1: the share sheet. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+
+            <!-- Import path 2: "Open with" from mail and file managers, which is
+                 how a large share of PDFs actually arrive. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
         </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- Temporary card bring-up screen; no longer the launcher. -->
+        <activity
+            android:name=".CardDebugActivity"
+            android:exported="true"
+            android:label="JPKI Card Debug"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
 
 </manifest>

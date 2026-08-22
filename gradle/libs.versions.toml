@@ -3,6 +3,9 @@
 # org.jetbrains.kotlin.android plugin. It supplies KGP itself (2.2.10 as of
 # AGP 9.0); override only via a buildscript classpath in the root build file.
 agp = "9.3.1"
+# Must match the Kotlin Gradle Plugin that AGP bundles (see AGP's own POM), or
+# the Compose compiler and the Kotlin compiler disagree on ABI.
+kotlin = "2.2.10"
 pdfboxAndroid = "2.0.27.0"
 # BouncyCastle: one FAMILY (jdk15to18), latest patch of each artifact. See
 # PLAN.md §5.2. The jdk15on / jdk15to18 / jdk18on variants share the same
@@ -17,6 +20,13 @@ bcprov = "1.85.2"
 bcpkix = "1.85"
 bcutil = "1.85.1"
 junit = "4.13.2"
+# Compose 1.12 (BOM 2026.08.00) requires compileSdk 37, which is not in the
+# stable SDK channel yet. Staying on the 1.11 line keeps compileSdk 36 stable
+# rather than pulling a preview platform into a signing app.
+composeBom = "2026.06.01"
+activityCompose = "1.13.0"
+# 2.11.0 also requires compileSdk 37; 2.10.0 is the newest that builds on 36.
+lifecycleViewmodelCompose = "2.10.0"
 coreKtx = "1.15.0"
 
 [libraries]
@@ -26,7 +36,17 @@ bc-pkix = { module = "org.bouncycastle:bcpkix-jdk15to18", version.ref = "bcpkix"
 bc-util = { module = "org.bouncycastle:bcutil-jdk15to18", version.ref = "bcutil" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 junit = { module = "junit:junit", version.ref = "junit" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons-core = { module = "androidx.compose.material:material-icons-core" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodelCompose" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
+# Still required under AGP 9: enabling buildFeatures.compose without it fails with
+# "the Compose Compiler Gradle plugin is required when compose is enabled".
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
