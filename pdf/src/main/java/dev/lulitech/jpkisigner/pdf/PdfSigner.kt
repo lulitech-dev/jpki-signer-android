@@ -41,9 +41,11 @@ class PdfSigner(private val provider: SignatureProvider) {
                 signDate = Calendar.getInstance()
             }
 
-            // TODO(M2): port the reference's DocMDP certification signature —
-            // /Perms /DocMDP plus the SigRef transform — for the first signature
-            // only. See PLAN.md §5.
+            // The first signature certifies the document; later ones are plain
+            // approval signatures. There can be at most one DocMDP per document.
+            if (DocMdp.existingPermission(document) == 0) {
+                DocMdp.apply(document, signature)
+            }
 
             SignatureOptions().use { options ->
                 options.preferredSignatureSize = PREFERRED_SIGNATURE_SIZE

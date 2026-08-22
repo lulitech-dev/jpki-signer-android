@@ -14,6 +14,19 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
         android:label="JPKI Signer"
-        android:supportsRtl="true" />
+        android:supportsRtl="true">
+
+        <!-- Temporary card bring-up screen; replaced by the real UI. -->
+        <activity
+            android:name=".CardDebugActivity"
+            android:exported="true"
+            android:label="JPKI Card Debug"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
 
 </manifest>

@@ -26,4 +26,8 @@ kotlin {
 // exchanges only ByteArrays with :pdf — see PLAN.md §3.
 dependencies {
     testImplementation(libs.junit)
+
+    // Test-only: cross-checks the hardcoded DigestInfo prefix against a real
+    // ASN.1 encoder. Not shipped -- :jpki has no BouncyCastle at runtime.
+    testImplementation(libs.bc.prov)
 }
