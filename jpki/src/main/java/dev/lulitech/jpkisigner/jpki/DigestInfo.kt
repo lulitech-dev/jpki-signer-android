@@ -3,6 +3,13 @@ package dev.lulitech.jpkisigner.jpki
 /**
  * PKCS#1 DigestInfo construction.
  *
+ * **Not the signing path.** A real signature's DigestInfo is built in `:pdf`, by
+ * BouncyCastle, as part of assembling the CMS -- see DESIGN.md §3, where the
+ * 51 bytes cross into this module already encoded. What is left here is the card
+ * bring-up screen's own encoder, which has no CMS to get one from, plus the test
+ * that cross-checks these bytes against BouncyCastle's. R8 drops it from release
+ * builds, where nothing reaches it.
+ *
  * The card applies PKCS#1 v1.5 padding to whatever it is handed and signs it, so
  * handing it a bare hash yields a structurally valid RSA signature that no
  * verifier accepts. It must receive a DigestInfo.

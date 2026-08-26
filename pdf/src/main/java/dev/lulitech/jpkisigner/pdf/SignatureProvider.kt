@@ -3,7 +3,7 @@ package dev.lulitech.jpkisigner.pdf
 /**
  * The boundary between [dev.lulitech.jpkisigner.pdf] and the card layer.
  *
- * Only byte arrays cross it — see PLAN.md §3. `:jpki` implements this against a
+ * Only byte arrays cross it — see DESIGN.md §3. `:jpki` implements this against a
  * real My Number Card over NFC; tests implement it with a software RSA key, which
  * is what lets the whole PDF/CMS layer be verified with no hardware.
  */

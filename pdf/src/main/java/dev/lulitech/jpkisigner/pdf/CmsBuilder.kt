@@ -24,7 +24,7 @@ import java.io.OutputStream
  * Builds the detached CMS SignedData that goes into the PDF's /Contents.
  *
  * Everything here is pure BouncyCastle — no JCE provider is registered and no
- * [java.security.Signature] is obtained. See PLAN.md §5.1 for why: Android
+ * [java.security.Signature] is obtained. See DESIGN.md §5.1 for why: Android
  * squats the provider name "BC" with a stripped fork, so `Security.addProvider`
  * is a silent no-op and `.setProvider("BC")` would route to it.
  */

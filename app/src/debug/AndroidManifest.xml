@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only additions.
+
+  CardDebugActivity verifies PINs against the 署名用 key and logs certificate
+  subjects, which on a real card carry the holder's name. It has no place in a
+  release APK, so it lives in this source set rather than being shipped and
+  guarded by a flag.
+
+  Not exported either. Nothing launches it from outside the app, and while it was
+  exported any installed app could have started it by explicit component name,
+  putting a real PIN prompt in front of the user on someone else's cue.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <activity
+            android:name=".CardDebugActivity"
+            android:exported="false"
+            android:label="JPKI Card Debug"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+
+</manifest>

@@ -52,7 +52,11 @@ fun ExportNameDialog(
     val focusRequester = remember { FocusRequester() }
 
     // Focus so the selection is visible and the keyboard replaces it directly.
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    //
+    // Guarded: requestFocus throws when no focus target is attached yet, and
+    // whether the dialog's subcomposition has got that far by the time this runs
+    // is not ours to decide. Where the cursor lands is not worth a crash over.
+    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
 
     val problem = FileNames.validateExportName(value.text)
 

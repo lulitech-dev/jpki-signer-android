@@ -11,11 +11,11 @@ import javax.crypto.Cipher
 
 /**
  * Stands in for a My Number Card so the whole PDF/CMS layer can be tested with no
- * hardware. See PLAN.md §3 — the card only ever hands over a certificate and
+ * hardware. See DESIGN.md §3 — the card only ever hands over a certificate and
  * signs a DigestInfo, and both are reproducible in software.
  *
  * This is test-only code, so it may use JCA freely for fixture generation. The
- * production path stays provider-free (PLAN.md §5.1).
+ * production path stays provider-free (DESIGN.md §5.1).
  */
 class SoftwareSignatureProvider(
     commonName: String = "署名 太郎",

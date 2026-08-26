@@ -2,6 +2,7 @@ package dev.lulitech.jpkisigner.jpki
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -49,6 +50,67 @@ class FakeCardTest {
             ((contentLength shr 8) and 0xFF).toByte(), (contentLength and 0xFF).toByte(),
         )
         return header + ByteArray(contentLength) { (it % 251).toByte() }
+    }
+
+    /**
+     * A reply with no room for a status word.
+     *
+     * Nothing in a well-behaved exchange produces one; a reader stack or a card
+     * that stops mid-answer does. It used to raise `IllegalArgumentException`,
+     * which every send site's IOException handling let straight past, so it
+     * arrived on screen as untranslated English through the unforeseen-failure
+     * path -- in the one module whose whole error design exists to prevent that.
+     */
+    private class TruncatingCard(private val reply: ByteArray) : ApduTransceiver {
+        override fun transceive(command: ByteArray): ByteArray = reply
+    }
+
+    @Test
+    fun `a reply with no status word is a card problem, not an argument error`() {
+        val problem = assertThrows(CardException::class.java) {
+            JpkiSession(TruncatingCard(ByteArray(1))).selectApplication()
+        }.problem
+
+        assertEquals(CardProblem.MalformedResponse, problem)
+    }
+
+    @Test
+    fun `an empty reply is a card problem too`() {
+        val problem = assertThrows(CardException::class.java) {
+            JpkiSession(TruncatingCard(ByteArray(0))).selectApplication()
+        }.problem
+
+        assertEquals(CardProblem.MalformedResponse, problem)
+    }
+
+    /**
+     * After a VERIFY the honest answer is narrower still. Something answered, so
+     * the card may well have processed the command and moved its counter, but
+     * with no status word there is no telling a success from a wrong PIN. That is
+     * the same position a dropped link leaves us in, and it must produce the same
+     * message -- the one that tells the user to tap again and re-read the counter
+     * -- rather than one that says nothing about the attempt.
+     */
+    @Test
+    fun `a verify with no status word back leaves the outcome unknown`() {
+        val session = JpkiSession(
+            object : ApduTransceiver {
+                override fun transceive(command: ByteArray): ByteArray =
+                    // Only the VERIFY carrying data is truncated; everything
+                    // leading up to it answers normally.
+                    if ((command[1].toInt() and 0xFF) == 0x20 && command.size > 4) {
+                        ByteArray(1)
+                    } else {
+                        byteArrayOf(0x90.toByte(), 0x00)
+                    }
+            },
+        )
+
+        val problem = assertThrows(CardException::class.java) {
+            session.verifyPin(JpkiKey.DIGITAL_SIGNATURE, "ABC123".toCharArray())
+        }.problem
+
+        assertEquals(CardProblem.VerifyOutcomeUnknown, problem)
     }
 
     @Test
@@ -107,6 +169,81 @@ class FakeCardTest {
         }
         assertNull(JpkiSession(card).readCaCertificate(JpkiKey.DIGITAL_SIGNATURE))
     }
+
+    /**
+     * A card whose EF header declares a size, regardless of what it can serve.
+     * Stands in for a corrupt or hostile card, which is the only place a length
+     * this large can come from.
+     */
+    private class LyingCard(private val header: ByteArray) : ApduTransceiver {
+        override fun transceive(command: ByteArray): ByteArray =
+            when (command[1].toInt() and 0xFF) {
+                0xA4 -> swBytes(StatusWord.SUCCESS)
+                0xB0 -> header + swBytes(StatusWord.SUCCESS)
+                else -> swBytes(StatusWord.FILE_NOT_FOUND)
+            }
+
+        private fun swBytes(v: Int) =
+            byteArrayOf(((v shr 8) and 0xFF).toByte(), (v and 0xFF).toByte())
+    }
+
+    @Test
+    fun `refuses a declared length that would overflow the allocation`() {
+        // 30 84 7F FF FF FF: four length bytes, close enough to Int.MAX_VALUE that
+        // `2 + 4 + length` wraps negative when it is computed in an Int.
+        val card = LyingCard(
+            byteArrayOf(0x30, 0x84.toByte(), 0x7F, 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()),
+        )
+
+        val thrown = assertThrows(CardException::class.java) {
+            JpkiSession(card).readCertificate(JpkiKey.AUTHENTICATION)
+        }
+        assertTrue(thrown.problem is CardProblem.Unreadable)
+    }
+
+    @Test
+    fun `refuses a declared length beyond anything the applet holds`() {
+        // 16 MB: no overflow, but it would allocate the lot and then ask for tens
+        // of thousands of NFC round trips to fill it.
+        val card = LyingCard(
+            byteArrayOf(0x30, 0x83.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()),
+        )
+
+        val thrown = assertThrows(CardException::class.java) {
+            JpkiSession(card).readCertificate(JpkiKey.AUTHENTICATION)
+        }
+        assertTrue(thrown.problem is CardProblem.Unreadable)
+    }
+
+    /**
+     * The PIN reaches the card inside a command APDU, which is a second copy of
+     * it. Wiping only the encoded PIN left that one on the heap until a collector
+     * happened to reach it.
+     */
+    @Test
+    fun `verifying a PIN leaves no copy of it in the command that carried it`() {
+        val sent = mutableListOf<ByteArray>()
+        val card = object : ApduTransceiver {
+            override fun transceive(command: ByteArray): ByteArray {
+                // The array itself, not a copy: the point is what it holds after
+                // verifyPin has returned.
+                sent += command
+                return byteArrayOf(0x90.toByte(), 0x00)
+            }
+        }
+        val pin = byteArrayOf('1'.code.toByte(), '2'.code.toByte(), '3'.code.toByte(), '4'.code.toByte())
+
+        JpkiSession(card).verifyPin(JpkiKey.AUTHENTICATION, charArrayOf('1', '2', '3', '4'))
+
+        assertTrue("a VERIFY must have been sent", sent.any { it.size > 4 })
+        assertTrue(
+            "no command APDU may still hold the PIN",
+            sent.none { it.containsSequence(pin) },
+        )
+    }
+
+    private fun ByteArray.containsSequence(needle: ByteArray): Boolean =
+        (0..size - needle.size).any { at -> needle.indices.all { this[at + it] == needle[it] } }
 }
 
 /** Behaviour when the card leaves the field mid-command. */
@@ -128,6 +265,7 @@ class CardLostTest {
             session.verifyPin(JpkiKey.DIGITAL_SIGNATURE, "ABC123".toCharArray())
         }
         // The user must not be told "wrong PIN" or "nothing happened"; neither is known.
+        assertEquals(CardProblem.VerifyOutcomeUnknown, error.problem)
         assertTrue(
             "message must admit the attempt may have counted: ${error.message}",
             error.message!!.contains("may or may not"),
@@ -140,6 +278,7 @@ class CardLostTest {
         val error = org.junit.Assert.assertThrows(CardException::class.java) {
             session.readCertificate(JpkiKey.AUTHENTICATION)
         }
+        assertEquals(CardProblem.LostContact, error.problem)
         assertTrue(error.message!!.contains("lost contact"))
     }
 
@@ -161,7 +300,8 @@ class CardLostTest {
             JpkiSession(card).verifyPin(JpkiKey.DIGITAL_SIGNATURE, "ABC123".toCharArray())
         }
         assertEquals("exactly one VERIFY must be sent", 1, verifyCount)
-        assertTrue(error.message!!.contains("2 attempt"))
+        // The remaining count travels as data, not as a substring of a message.
+        assertEquals(CardProblem.WrongPin(remainingAttempts = 2), error.problem)
     }
 
     @Test
@@ -180,7 +320,7 @@ class CardLostTest {
         val error = org.junit.Assert.assertThrows(CardException::class.java) {
             JpkiSession(card).verifyPin(JpkiKey.DIGITAL_SIGNATURE, "ABC123".toCharArray())
         }
-        assertTrue(error.message!!.contains("blocked"))
+        assertEquals(CardProblem.PinBlocked, error.problem)
         assertTrue(error.statusWord!!.isPinBlocked)
     }
 }

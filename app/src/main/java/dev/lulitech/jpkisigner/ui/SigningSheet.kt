@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -20,6 +21,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import dev.lulitech.jpkisigner.R
+import dev.lulitech.jpkisigner.data.SignFailure
+import dev.lulitech.jpkisigner.jpki.JpkiKey
 
 /** Where the signing flow currently is. */
 sealed interface SigningState {
@@ -34,22 +37,44 @@ sealed interface SigningState {
 
     data object Succeeded : SigningState
 
-    data class Failed(val message: String, val remainingAttempts: Int?) : SigningState
+    /**
+     * @param failure carried as data, so the message is resolved against string
+     *   resources here rather than being an English literal from the throw site.
+     */
+    data class Failed(val failure: SignFailure) : SigningState
 }
 
 data class SigningForm(
     val reason: String = "",
     val location: String = "",
+    /**
+     * A `String` because that is what [OutlinedTextField] takes, and it is the
+     * practical ceiling here: unlike the `CharArray` the card layer wants, it
+     * cannot be wiped, and Compose holds it until the form is replaced.
+     *
+     * The mitigations sit around it instead. The field is a password field, so the
+     * IME keeps no history of it; `MainActivity` drops it from the form the moment
+     * it has been snapshotted; and every `CharArray` derived from it is wiped
+     * after use.
+     */
     val pin: String = "",
 )
 
+/**
+ * @param nfcProblem why this device cannot read a card right now, or null when it
+ *   can. Reader mode is silent about being switched off, so without this the flow
+ *   would go on to ask for a card that can never arrive.
+ */
 @Composable
 fun SigningSheet(
     state: SigningState,
     form: SigningForm,
     pinError: String?,
+    nfcProblem: String?,
+    acceptLastAttempt: Boolean,
     onFormChange: (SigningForm) -> Unit,
     onStart: () -> Unit,
+    onUseLastAttempt: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Column(
@@ -104,9 +129,26 @@ fun SigningSheet(
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (nfcProblem != null) {
+                    Text(
+                        nfcProblem,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                // Restated on the form the user came back to, not only on the
+                // failure they came from: this is the run that actually spends the
+                // attempt, and the PIN about to be typed is the one at stake.
+                if (acceptLastAttempt) {
+                    Text(
+                        stringResource(R.string.sign_last_attempt_notice),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 Button(
                     onClick = onStart,
-                    enabled = pinError == null && form.pin.isNotEmpty(),
+                    enabled = nfcProblem == null && pinError == null && form.pin.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.sign_start)) }
             }
@@ -125,31 +167,63 @@ fun SigningSheet(
 
             is SigningState.Failed -> {
                 Text(
-                    stringResource(R.string.sign_failed, state.message),
+                    stringResource(R.string.sign_failed, messageFor(state.failure)),
                     color = MaterialTheme.colorScheme.error,
                 )
-                state.remainingAttempts?.let {
+                state.failure.remainingAttempts?.let {
                     Text(
-                        stringResource(R.string.sign_attempts_warning, it),
+                        // The lockout threshold comes from the key, not from the
+                        // sentence: a number written into a translation goes stale
+                        // against the card without anything failing.
+                        pluralStringResource(
+                            R.plurals.sign_attempts_warning,
+                            it,
+                            it,
+                            JpkiKey.DIGITAL_SIGNATURE.maxAttempts,
+                        ),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
+                // The way past our own floor. Without it, refusing at the floor is
+                // permanent: only a successful VERIFY resets the card's counter,
+                // and this app would never send one again -- so the card would
+                // stay unusable here for good. Deliberately not the primary
+                // button, and it leads back to the form rather than straight to a
+                // card, so the PIN has to be retyped before the attempt is spent.
+                val failure = state.failure
+                if (failure is SignFailure.TooFewAttempts && failure.canOverride) {
+                    TextButton(
+                        onClick = onUseLastAttempt,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            stringResource(R.string.sign_use_last_attempt),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
         }
 
-        TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-            // "Cancel" reads as undoing the signature once it has already
-            // succeeded. Once there is nothing left to cancel, the button just
-            // closes the sheet.
-            Text(
-                stringResource(
-                    when (state) {
-                        SigningState.Succeeded, is SigningState.Failed -> R.string.close
-                        else -> R.string.cancel
-                    },
-                ),
-            )
+        // No button at all while the card operation is in flight. It cannot be
+        // stopped: the VERIFY has been sent and the signature is being written, so
+        // a Cancel that leaves the document signed anyway is worse than no button.
+        // MainActivity holds the sheet open in this state for the same reason.
+        if (state != SigningState.Working) {
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                // "Cancel" reads as undoing the signature once it has already
+                // succeeded. Once there is nothing left to cancel, the button just
+                // closes the sheet.
+                Text(
+                    stringResource(
+                        when (state) {
+                            SigningState.Succeeded, is SigningState.Failed -> R.string.close
+                            else -> R.string.cancel
+                        },
+                    ),
+                )
+            }
         }
     }
 }

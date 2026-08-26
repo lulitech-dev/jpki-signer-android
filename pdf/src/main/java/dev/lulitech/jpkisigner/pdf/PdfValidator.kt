@@ -22,6 +22,16 @@ enum class PdfRejection {
 
     /** Parses, but contains no pages. */
     NO_PAGES,
+
+    /**
+     * Carries a certification signature that permits no further change, so any
+     * signature added to it would break that certification.
+     *
+     * [PdfSigner] refuses these too, as the last line of defence, but by then a
+     * PIN has been verified and an attempt spent. Catching it here is the whole
+     * point of validating at import.
+     */
+    CERTIFIED_NO_CHANGES,
 }
 
 object PdfValidator {
@@ -29,17 +39,23 @@ object PdfValidator {
     /** @return the reason to reject [file], or null when it is signable. */
     fun validate(file: File): PdfRejection? {
         if (!file.isFile || file.length() == 0L) return PdfRejection.UNREADABLE
-        // PDFBox will happily reconstruct the cross-reference table of a
-        // truncated file and report it as healthy, so a half-copied download
-        // would pass. Require the end-of-file marker as well: signing input that
-        // had to be repaired risks an output whose original bytes were rewritten,
-        // which is exactly what the revision stack must never see.
-        if (!endsWithEofMarker(file)) return PdfRejection.UNREADABLE
         return try {
+            // Inside the try: reading the tail is I/O and can fail on its own, and
+            // an IOException escaping a function whose contract is "the reason to
+            // reject" would crash the import instead of rejecting the file.
+            //
+            // PDFBox will happily reconstruct the cross-reference table of a
+            // truncated file and report it as healthy, so a half-copied download
+            // would pass. Require the end-of-file marker as well: signing input
+            // that had to be repaired risks an output whose original bytes were
+            // rewritten, which is exactly what the revision stack must never see.
+            if (!endsWithEofMarker(file)) return PdfRejection.UNREADABLE
             PDDocument.load(file).use { document ->
                 when {
                     document.isEncrypted -> PdfRejection.ENCRYPTED
                     document.numberOfPages == 0 -> PdfRejection.NO_PAGES
+                    DocMdp.existingPermission(document) == DocMdp.NO_CHANGES_PERMITTED ->
+                        PdfRejection.CERTIFIED_NO_CHANGES
                     else -> null
                 }
             }

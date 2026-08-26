@@ -1,27 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Default (Japanese). English lives in values-en/. -->
+<!--
+  Default (Japanese). English lives in values-en/.
+
+  Counted quantities are <plurals>, not a "(s)" suffix on a <string>. Japanese
+  has one form and so carries only `other`; the point is that a language with
+  more of them has somewhere to put them, without the call sites changing.
+-->
 <resources>
     <!-- A product name, not a phrase. The same in every locale. -->
     <string name="app_name" translatable="false">JPKI Signer</string>
 
     <!-- Document list -->
     <string name="documents_title">書類</string>
-    <string name="documents_signature_count">署名 %1$d 件</string>
+    <plurals name="documents_signature_count">
+        <item quantity="other">署名 %1$d 件</item>
+    </plurals>
     <string name="documents_no_signature">署名なし</string>
     <string name="documents_delete">削除</string>
     <string name="documents_delete_title">この書類を削除しますか？</string>
     <string name="documents_delete_body">「%1$s」をこのアプリから削除します。この操作は取り消せません。</string>
 
     <!-- Document detail -->
-    <string name="document_signatures_title">署名の履歴</string>
     <string name="document_no_signatures">この書類にはまだ署名がありません。</string>
     <string name="document_sign">署名する</string>
     <string name="document_share">共有</string>
     <string name="signature_position">署名 #%1$d</string>
-    <string name="signature_integrity_failed">この署名を確認できませんでした。ファイルが壊れているおそれがあります。</string>
+    <!--
+         A finding about the document: it was checked, and it does not match.
+         Kept apart from the line below, which is a statement about this app.
+    -->
+    <string name="signature_integrity_mismatch">この署名は、この文書の内容と一致しません。ファイルが壊れているか、署名後に変更されたおそれがあります。</string>
+    <string name="signature_integrity_unchecked">この署名はこのアプリでは確認できません。対応していない署名方式の可能性があります。文書に問題があるという意味ではありません。</string>
     <string name="signature_delete_title">署名を削除しますか？</string>
     <string name="signature_delete_body_single">署名 #%1$d を削除します。この操作は取り消せません。</string>
-    <string name="signature_delete_body_cascade">署名 #%1$d を削除すると、後続の %2$d 件も削除されます。この操作は取り消せません。</string>
+    <plurals name="signature_delete_body_cascade">
+        <item quantity="other">署名 #%1$d を削除すると、後続の %2$d 件も削除されます。この操作は取り消せません。</item>
+    </plurals>
     <string name="signature_delete_confirm">削除する</string>
     <string name="cancel">キャンセル</string>
 
@@ -29,10 +43,47 @@
     <string name="sign_title">電子署名</string>
     <string name="sign_reason">理由（任意）</string>
     <string name="sign_location">場所（任意）</string>
-    <string name="sign_pin">署名用パスワード（6〜16 桁の英数字）</string>
+    <string name="sign_pin">署名用パスワード（英数字 6〜16 文字）</string>
     <string name="sign_pin_uppercase">英字は大文字で入力してください</string>
-    <string name="sign_attempts_remaining">残り試行回数: %1$d 回</string>
-    <string name="sign_attempts_warning">残り %1$d 回です。5 回連続で間違えると市区町村の窓口で再設定が必要になります。</string>
+
+    <!--
+         PIN format problems. Resolved here, not in :jpki, which has no locale.
+
+         Two keys, two names, and they are not interchangeable. The one this app
+         signs with is the 署名用電子証明書 password: 6-16 alphanumerics. 暗証番号 is
+         what people know as the 4-digit 利用者証明用 PIN, so it stays on the
+         exact-length and digits-only messages, which only that key can produce,
+         and everything on the signing path says 署名用パスワード instead. Calling
+         the field one thing and its own error another is how someone ends up
+         typing the wrong one, on a key that takes a trip to a municipal window
+         to unblock.
+    -->
+    <string name="pin_error_length_exact">暗証番号は %1$d 桁で入力してください</string>
+    <string name="pin_error_length_range">署名用パスワードは %1$d〜%2$d 文字で入力してください</string>
+    <string name="pin_error_digits">暗証番号は数字のみです</string>
+    <string name="pin_error_uppercase">署名用パスワードは数字と大文字の英字のみです</string>
+
+    <!-- Card problems. Likewise translated here rather than in :jpki. -->
+    <string name="card_error_pin_blocked">署名用パスワードがロックされています。市区町村の窓口で再設定してください。</string>
+    <plurals name="card_error_wrong_pin">
+        <item quantity="other">署名用パスワードが違います。残り %1$d 回です。</item>
+    </plurals>
+    <string name="card_error_wrong_pin_unknown">署名用パスワードが違います。</string>
+    <string name="card_error_verify_unknown">確認中にカードとの通信が切れました。試行回数が減ったかどうかは分かりません。もう一度かざして残り回数を確認してください。</string>
+    <string name="card_error_not_jpki_card">マイナンバーカードではないか、証明書アプリケーションを開けませんでした。カードを確認してもう一度お試しください。</string>
+    <string name="card_error_lost_contact">カードとの通信が切れました。カードを動かさないようにして、もう一度お試しください。</string>
+    <string name="card_error_command_failed">カードとのやりとりに失敗しました（%1$s）。</string>
+    <string name="card_error_unreadable">カードの %1$s を読み取れませんでした。</string>
+    <string name="card_error_malformed_response">カードからの応答を読み取れませんでした。カードを動かさないようにして、もう一度お試しください。</string>
+    <string name="sign_error_document_missing">この書類は見つかりませんでした。</string>
+    <plurals name="sign_error_too_few_attempts">
+        <item quantity="other">このカードの残り回数はあと %1$d 回です。入力を誤って使い切らないように中止しました。使い切ると市区町村の窓口でしか再設定できません。</item>
+    </plurals>
+    <string name="sign_use_last_attempt">残り 1 回を使って署名する</string>
+    <string name="sign_last_attempt_notice">残り 1 回を使います。署名用パスワードを誤ると、市区町村の窓口でしか再設定できなくなります。</string>
+    <plurals name="sign_attempts_warning">
+        <item quantity="other">残り %1$d 回です。%2$d 回連続で間違えると市区町村の窓口で再設定が必要になります。</item>
+    </plurals>
     <string name="sign_start">カードをかざす</string>
     <string name="sign_hold_card">マイナンバーカードを端末の背面にかざしたまま、動かさないでください。</string>
     <string name="sign_in_progress">署名しています…</string>
@@ -44,10 +95,13 @@
     <string name="close">閉じる</string>
     <string name="a11y_delete_document">「%1$s」を削除</string>
     <string name="a11y_delete_signature">署名 #%1$d を削除</string>
-    <string name="a11y_delete_signature_cascade">署名 #%1$d と後続の %2$d 件を削除</string>
+    <plurals name="a11y_delete_signature_cascade">
+        <item quantity="other">署名 #%1$d と後続の %2$d 件を削除</item>
+    </plurals>
     <string name="import_rejected_unreadable">この PDF は読み取れませんでした。ファイルが壊れているか、PDF ではない可能性があります。</string>
     <string name="import_rejected_encrypted">パスワード保護された PDF には署名できません。保護を解除してからお試しください。</string>
     <string name="import_rejected_no_pages">この PDF にはページがありません。</string>
+    <string name="import_rejected_certified">この PDF は変更が許可されない形で証明されているため、署名を追加できません。</string>
     <string name="signature_not_removable">この署名は削除できません</string>
     <string name="back">戻る</string>
     <string name="export_title">共有するファイル名</string>
@@ -56,6 +110,7 @@
     <string name="export_error_separators">ファイル名に / や \\ は使えません</string>
     <string name="export_error_too_long">ファイル名が長すぎます（255 バイトまで）</string>
     <string name="export_error_not_pdf">ファイル名は .pdf で終わる必要があります</string>
+    <string name="document_unreadable">この書類を読み取れませんでした。署名の表示と削除はできません。</string>
     <string name="document_trailing_changes">最後の署名より後に、この文書は変更されています。</string>
     <string name="sign_changes_not_permitted">この文書は変更が許可されていないため、署名できません。</string>
     <string name="documents_import_hint">ほかのアプリから PDF を共有すると、ここに追加されます。</string>
@@ -69,7 +124,7 @@
     <string name="about_libraries_heading">使用しているソフトウェア</string>
     <string name="about_libraries">PdfBox-Android および Apache PDFBox — Apache License 2.0\nBouncy Castle — Bouncy Castle Licence（MIT 系）\nAndroid Jetpack / Jetpack Compose — Apache License 2.0\nMaterial Design Icons — Apache License 2.0</string>
     <string name="about_privacy_heading">通信について</string>
-    <string name="about_privacy">このアプリはインターネットに接続しません。書類も暗証番号も端末の外に出ることはありません。</string>
+    <string name="about_privacy">このアプリはインターネットに接続しません。書類も署名用パスワードも端末の外に出ることはありません。</string>
     <string name="notices_title">ライセンス表示</string>
     <string name="about_notices">ライセンス表示を見る</string>
     <string name="about_license">BSD 2-Clause License</string>

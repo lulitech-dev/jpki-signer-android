@@ -2,6 +2,7 @@ package dev.lulitech.jpkisigner.jpki
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -65,16 +66,19 @@ class ApduTest {
         val key = JpkiKey.DIGITAL_SIGNATURE
         assertNull(key.validatePin("ABC123".toCharArray()))
         // Lowercase would be encoded faithfully, rejected, and cost an attempt.
-        assertEquals("PIN must be digits and uppercase letters only", key.validatePin("abc123".toCharArray()))
-        assertEquals("PIN must be 6 to 16 characters", key.validatePin("AB12".toCharArray()))
+        assertEquals(
+            PinProblem.NotUppercaseAlphanumeric,
+            key.validatePin("abc123".toCharArray()),
+        )
+        assertEquals(PinProblem.WrongLength(6, 16), key.validatePin("AB12".toCharArray()))
     }
 
     @Test
     fun `auth pin must be four digits`() {
         val key = JpkiKey.AUTHENTICATION
         assertNull(key.validatePin("1234".toCharArray()))
-        assertEquals("PIN must be exactly 4 characters", key.validatePin("12345".toCharArray()))
-        assertEquals("PIN must be digits only", key.validatePin("12AB".toCharArray()))
+        assertEquals(PinProblem.WrongLength(4, 4), key.validatePin("12345".toCharArray()))
+        assertEquals(PinProblem.NotDigits, key.validatePin("12AB".toCharArray()))
     }
 
     @Test
@@ -86,5 +90,19 @@ class ApduTest {
         assertThrows(IllegalArgumentException::class.java) {
             session.verifyPin(JpkiKey.DIGITAL_SIGNATURE, "short".toCharArray())
         }
+    }
+
+    /**
+     * Bit 8 of P1 selects short-EF addressing, leaving 15 bits for the offset.
+     * Masking a larger one would re-read from near the start of the file and
+     * return bytes that look plausible, so it has to fail loudly instead.
+     */
+    @Test
+    fun `read binary refuses an offset it cannot address`() {
+        assertNotNull(Apdu.readBinary(Apdu.MAX_OFFSET, 1))
+        assertThrows(IllegalArgumentException::class.java) {
+            Apdu.readBinary(Apdu.MAX_OFFSET + 1, 1)
+        }
+        assertThrows(IllegalArgumentException::class.java) { Apdu.readBinary(-1, 1) }
     }
 }

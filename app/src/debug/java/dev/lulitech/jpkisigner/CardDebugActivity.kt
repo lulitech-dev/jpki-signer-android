@@ -127,7 +127,9 @@ class CardDebugActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (reader.isEnabled) reader.start(::run)
+        if (reader.isEnabled) {
+            reader.start(::run) { problem -> report("Card unusable: $problem") }
+        }
     }
 
     override fun onPause() {
@@ -279,7 +281,7 @@ class CardDebugActivity : Activity() {
 
         SignatureInspector.inspect(signed).forEachIndexed { i, info ->
             appendLine("signature #${i + 1}:")
-            appendLine("  integrityOk         = ${info.integrityOk}")
+            appendLine("  integrity           = ${info.integrity}")
             appendLine("  coversWholeDocument = ${info.coversWholeDocument}")
             appendLine("  signerCommonName    = <redacted>")
             info.verificationError?.let { appendLine("  error = $it") }

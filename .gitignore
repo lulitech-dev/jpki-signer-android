@@ -13,6 +13,7 @@ captures/
 # Local reference implementation; a clone with its own .git.
 jpki-pdf-signer/
 
-# Local working notes, deliberately untracked.
+# Local working notes, deliberately untracked. The subset the source comments
+# cite is tracked in DESIGN.md instead.
 PLAN.md
 CLAUDE.md

@@ -43,6 +43,21 @@ class FileNamesTest {
         assertEquals("report-signed.pdf", FileNames.proposeExportName("report.PDF").text)
     }
 
+    /**
+     * The dialog opens on this name with its confirm button enabled, so a
+     * proposal that fails validation is a dead end the user has to notice and
+     * repair before anything can be shared. Appending the token is what can push
+     * a stored name that was already at the cap over it.
+     */
+    @Test
+    fun `the proposal fits the byte limit even for a name already at it`() {
+        val stored = FileNames.safe("契".repeat(200) + ".pdf")
+        val proposal = FileNames.proposeExportName(stored)
+
+        assertNull(FileNames.validateExportName(proposal.text))
+        assertTrue(proposal.text.endsWith("-signed.pdf"))
+    }
+
     // --- validating what the user typed --------------------------------------
 
     @Test
@@ -68,6 +83,28 @@ class FileNamesTest {
             FileNames.EXTENSION
         assertEquals(255, name.toByteArray(Charsets.UTF_8).size)
         assertNull(FileNames.validateExportName(name))
+    }
+
+    /**
+     * The extension is a suffix, not a name. These passed every other check and
+     * reached the recipient as a nameless, hidden file.
+     */
+    @Test
+    fun `a name that is nothing but an extension is rejected`() {
+        assertEquals(ExportNameProblem.BLANK, FileNames.validateExportName(".pdf"))
+        assertEquals(ExportNameProblem.BLANK, FileNames.validateExportName("..pdf"))
+        assertEquals(ExportNameProblem.BLANK, FileNames.validateExportName("  .pdf  "))
+        assertNull("a real name that happens to start with a dot is fine", FileNames.validateExportName(".a.pdf"))
+    }
+
+    /** The dialog must never open on a name its own confirm button rejects. */
+    @Test
+    fun `every proposed export name passes validation`() {
+        listOf("a.pdf", "契約書.pdf", "x-signed.pdf", "あ".repeat(200) + ".pdf", "no-extension")
+            .forEach { stored ->
+                val proposed = FileNames.proposeExportName(stored).text
+                assertNull("proposed for $stored: $proposed", FileNames.validateExportName(proposed))
+            }
     }
 
     // --- sanitising an incoming name -----------------------------------------

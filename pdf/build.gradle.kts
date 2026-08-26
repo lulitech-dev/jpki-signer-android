@@ -29,7 +29,7 @@ kotlin {
     }
 }
 
-// --- BouncyCastle hygiene (PLAN.md §5.2) -----------------------------------
+// --- BouncyCastle hygiene (DESIGN.md §5.2) -----------------------------------
 // bcprov / bcpkix / bcutil publish the same org.bouncycastle.* packages across
 // their jdk15on, jdk15to18 and jdk18on variants. Mixing families gives duplicate
 // classes or silent version skew, so: rewrite any other family onto jdk15to18,
@@ -37,7 +37,7 @@ kotlin {
 //
 // Pin per artifact, NOT to one shared version string — bcutil 1.85 duplicates a
 // bcprov class and breaks checkDuplicateClasses; 1.85.1 fixes it. See the note
-// in libs.versions.toml and PLAN.md §5.2.
+// in libs.versions.toml and DESIGN.md §5.2.
 dependencies {
     modules {
         listOf("bcprov", "bcpkix", "bcutil").forEach { artifact ->
@@ -45,7 +45,7 @@ dependencies {
                 module("org.bouncycastle:$artifact-$family") {
                     replacedBy(
                         "org.bouncycastle:$artifact-jdk15to18",
-                        "single BouncyCastle family — PLAN.md §5.2",
+                        "single BouncyCastle family — DESIGN.md §5.2",
                     )
                 }
             }
@@ -70,7 +70,7 @@ configurations.matching {
             }
             if (pinned != null) {
                 useVersion(pinned)
-                because("pinned BouncyCastle artifact version — PLAN.md §5.2")
+                because("pinned BouncyCastle artifact version — DESIGN.md §5.2")
             }
         }
     }
@@ -80,7 +80,7 @@ dependencies {
     api(libs.pdfbox.android)
 
     // Used as an ASN.1 / CMS structure library only. We never register a JCE
-    // provider — see PLAN.md §5.1.
+    // provider — see DESIGN.md §5.1.
     implementation(libs.bc.prov)
     implementation(libs.bc.pkix)
     implementation(libs.bc.util)

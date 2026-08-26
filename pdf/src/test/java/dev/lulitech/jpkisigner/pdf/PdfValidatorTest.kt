@@ -1,5 +1,8 @@
 package dev.lulitech.jpkisigner.pdf
 
+import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
@@ -65,5 +68,70 @@ class PdfValidatorTest {
             document.save(file)
         }
         assertEquals(PdfRejection.ENCRYPTED, PdfValidator.validate(file))
+    }
+
+    /**
+     * The reason import-time validation exists at all: refusing this at signing
+     * time would mean refusing it after a PIN attempt had already been spent.
+     */
+    @Test
+    fun `rejects a document certified against all changes`() {
+        val file = temp.newFile("locked.pdf")
+        PDDocument().use { document ->
+            document.addPage(PDPage())
+            val transformParams = COSDictionary().apply {
+                setItem(COSName.TYPE, COSName.getPDFName("TransformParams"))
+                setItem(COSName.V, COSName.getPDFName("1.2"))
+                setInt(COSName.P, DocMdp.NO_CHANGES_PERMITTED)
+            }
+            val reference = COSDictionary().apply {
+                setItem(COSName.TYPE, COSName.getPDFName("SigRef"))
+                setItem(COSName.getPDFName("TransformMethod"), COSName.DOCMDP)
+                setItem(COSName.getPDFName("TransformParams"), transformParams)
+            }
+            document.documentCatalog.cosObject.setItem(
+                COSName.PERMS,
+                COSDictionary().apply {
+                    setItem(
+                        COSName.DOCMDP,
+                        COSDictionary().apply {
+                            setItem(COSName.REFERENCE, COSArray().apply { add(reference) })
+                        },
+                    )
+                },
+            )
+            document.save(file)
+        }
+        assertEquals(PdfRejection.CERTIFIED_NO_CHANGES, PdfValidator.validate(file))
+    }
+
+    /** Form-filling certification still permits an approval signature. */
+    @Test
+    fun `accepts a document certified with form filling permitted`() {
+        val file = temp.newFile("formfill.pdf")
+        PDDocument().use { document ->
+            document.addPage(PDPage())
+            val transformParams = COSDictionary().apply {
+                setItem(COSName.TYPE, COSName.getPDFName("TransformParams"))
+                setInt(COSName.P, 2)
+            }
+            val reference = COSDictionary().apply {
+                setItem(COSName.getPDFName("TransformMethod"), COSName.DOCMDP)
+                setItem(COSName.getPDFName("TransformParams"), transformParams)
+            }
+            document.documentCatalog.cosObject.setItem(
+                COSName.PERMS,
+                COSDictionary().apply {
+                    setItem(
+                        COSName.DOCMDP,
+                        COSDictionary().apply {
+                            setItem(COSName.REFERENCE, COSArray().apply { add(reference) })
+                        },
+                    )
+                },
+            )
+            document.save(file)
+        }
+        assertNull(PdfValidator.validate(file))
     }
 }

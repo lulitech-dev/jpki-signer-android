@@ -3,22 +3,28 @@
 
     <!-- Document list -->
     <string name="documents_title">Documents</string>
-    <string name="documents_signature_count">%1$d signature(s)</string>
+    <plurals name="documents_signature_count">
+        <item quantity="one">%1$d signature</item>
+        <item quantity="other">%1$d signatures</item>
+    </plurals>
     <string name="documents_no_signature">Not signed</string>
     <string name="documents_delete">Delete</string>
     <string name="documents_delete_title">Delete this document?</string>
-    <string name="documents_delete_body">"%1$s" will be removed from this app. This cannot be undone.</string>
+    <string name="documents_delete_body">\"%1$s\" will be removed from this app. This cannot be undone.</string>
 
     <!-- Document detail -->
-    <string name="document_signatures_title">Signature history</string>
     <string name="document_no_signatures">This document has no signatures yet.</string>
     <string name="document_sign">Sign</string>
     <string name="document_share">Share</string>
     <string name="signature_position">Signature #%1$d</string>
-    <string name="signature_integrity_failed">This signature could not be checked. The file may be damaged.</string>
+    <string name="signature_integrity_mismatch">This signature does not match the contents of this document. The file may be damaged, or it may have been changed after signing.</string>
+    <string name="signature_integrity_unchecked">This app cannot check this signature — it may use a signature algorithm this app does not support. That is not a finding about the document.</string>
     <string name="signature_delete_title">Delete signature?</string>
     <string name="signature_delete_body_single">Signature #%1$d will be deleted. This cannot be undone.</string>
-    <string name="signature_delete_body_cascade">Deleting signature #%1$d will also delete the %2$d signature(s) after it. This cannot be undone.</string>
+    <plurals name="signature_delete_body_cascade">
+        <item quantity="one">Deleting signature #%1$d will also delete the %2$d signature after it. This cannot be undone.</item>
+        <item quantity="other">Deleting signature #%1$d will also delete the %2$d signatures after it. This cannot be undone.</item>
+    </plurals>
     <string name="signature_delete_confirm">Delete</string>
     <string name="cancel">Cancel</string>
 
@@ -28,8 +34,37 @@
     <string name="sign_location">Location (optional)</string>
     <string name="sign_pin">Signature PIN (6-16 letters and digits)</string>
     <string name="sign_pin_uppercase">Letters must be uppercase</string>
-    <string name="sign_attempts_remaining">Attempts remaining: %1$d</string>
-    <string name="sign_attempts_warning">Only %1$d attempt(s) left. After 5 wrong entries the PIN must be reset at a municipal office.</string>
+
+    <!-- PIN format problems. Resolved here, not in :jpki, which has no locale. -->
+    <string name="pin_error_length_exact">The PIN must be exactly %1$d characters</string>
+    <string name="pin_error_length_range">The PIN must be %1$d to %2$d characters</string>
+    <string name="pin_error_digits">The PIN must be digits only</string>
+    <string name="pin_error_uppercase">The PIN must be digits and uppercase letters only</string>
+
+    <!-- Card problems. Likewise translated here rather than in :jpki. -->
+    <string name="card_error_pin_blocked">The PIN is blocked. It must be reset at a municipal office.</string>
+    <plurals name="card_error_wrong_pin">
+        <item quantity="one">Wrong PIN. %1$d attempt remaining.</item>
+        <item quantity="other">Wrong PIN. %1$d attempts remaining.</item>
+    </plurals>
+    <string name="card_error_wrong_pin_unknown">Wrong PIN.</string>
+    <string name="card_error_verify_unknown">Contact with the card was lost while checking the PIN. Whether the attempt was counted is unknown — hold the card again to read the remaining attempts.</string>
+    <string name="card_error_not_jpki_card">This is not a My Number Card, or its certificate application could not be opened. Check the card and try again.</string>
+    <string name="card_error_lost_contact">Contact with the card was lost. Hold it still against the phone and try again.</string>
+    <string name="card_error_command_failed">The card did not accept a command (%1$s).</string>
+    <string name="card_error_unreadable">%1$s could not be read from the card.</string>
+    <string name="card_error_malformed_response">The card\'s reply could not be read. Hold it still against the phone and try again.</string>
+    <string name="sign_error_document_missing">This document no longer exists.</string>
+    <plurals name="sign_error_too_few_attempts">
+        <item quantity="one">Only %1$d attempt is left on this card. Signing was stopped so a mistyped PIN cannot use it up — after that the PIN can only be reset at a municipal office.</item>
+        <item quantity="other">Only %1$d attempts are left on this card. Signing was stopped so a mistyped PIN cannot use them up — after that the PIN can only be reset at a municipal office.</item>
+    </plurals>
+    <string name="sign_use_last_attempt">Use the last attempt</string>
+    <string name="sign_last_attempt_notice">This will use the last attempt. If the PIN is wrong, it can only be reset at a municipal office.</string>
+    <plurals name="sign_attempts_warning">
+        <item quantity="one">Only %1$d attempt left. After %2$d wrong entries the PIN must be reset at a municipal office.</item>
+        <item quantity="other">Only %1$d attempts left. After %2$d wrong entries the PIN must be reset at a municipal office.</item>
+    </plurals>
     <string name="sign_start">Hold the card</string>
     <string name="sign_hold_card">Hold your My Number Card against the back of the phone and keep it still.</string>
     <string name="sign_in_progress">Signing…</string>
@@ -39,12 +74,16 @@
     <string name="sign_nfc_unavailable">This device does not support NFC.</string>
     <string name="import_failed_title">Could not import</string>
     <string name="close">Close</string>
-    <string name="a11y_delete_document">Delete "%1$s"</string>
+    <string name="a11y_delete_document">Delete \"%1$s\"</string>
     <string name="a11y_delete_signature">Delete signature #%1$d</string>
-    <string name="a11y_delete_signature_cascade">Delete signature #%1$d and the %2$d after it</string>
+    <plurals name="a11y_delete_signature_cascade">
+        <item quantity="one">Delete signature #%1$d and the %2$d after it</item>
+        <item quantity="other">Delete signature #%1$d and the %2$d after it</item>
+    </plurals>
     <string name="import_rejected_unreadable">This PDF could not be read. It may be damaged, or not a PDF at all.</string>
     <string name="import_rejected_encrypted">Password-protected PDFs cannot be signed. Remove the protection and try again.</string>
     <string name="import_rejected_no_pages">This PDF has no pages.</string>
+    <string name="import_rejected_certified">This PDF is certified against any change, so a signature cannot be added to it.</string>
     <string name="signature_not_removable">This signature cannot be removed</string>
     <string name="back">Back</string>
     <string name="export_title">Share as</string>
@@ -53,6 +92,7 @@
     <string name="export_error_separators">A file name cannot contain / or \\</string>
     <string name="export_error_too_long">File name is too long (255 bytes maximum)</string>
     <string name="export_error_not_pdf">File name must end with .pdf</string>
+    <string name="document_unreadable">This document could not be read, so its signatures cannot be shown or removed.</string>
     <string name="document_trailing_changes">This document was changed after the last signature.</string>
     <string name="sign_changes_not_permitted">This document does not permit changes, so it cannot be signed.</string>
     <string name="documents_import_hint">Share a PDF from another app to add it here.</string>
@@ -78,7 +118,6 @@
     <string name="notice_bouncycastle_subtitle">Bouncy Castle Licence</string>
     <string name="notice_apache_heading">Apache PDFBox / PdfBox-Android / Android Jetpack / Kotlin / Material Design Icons</string>
     <string name="notice_apache_subtitle">Apache License, Version 2.0</string>
-    <string name="about_homepage" translatable="false">https://lulitech.dev</string>
     <string name="language_title">Language</string>
     <string name="language_system">Follow system setting</string>
     <string name="language_japanese">日本語</string>

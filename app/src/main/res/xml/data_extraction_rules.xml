@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Signed documents are sensitive. Exclude everything from both cloud backup and
-  device-to-device transfer. PLAN.md §3.2.
+  device-to-device transfer. DESIGN.md §3.2.
 -->
 <data-extraction-rules>
     <cloud-backup>

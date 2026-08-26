@@ -7,19 +7,39 @@
         android:name="android.hardware.nfc"
         android:required="true" />
 
-    <!-- No INTERNET permission, deliberately. PLAN.md §2. -->
+    <!-- No INTERNET permission, deliberately. DESIGN.md §2. -->
 
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true">
 
+        <!--
+             Rotation is handled in place rather than by recreating the activity.
+             Reader mode is bound to this instance, so a recreation mid-signing
+             tore the NFC link down under a card the user was holding to the
+             phone, after a PIN attempt had already been spent. Compose reads the
+             configuration reactively, so nothing here needs rebuilding for it.
+
+             Deliberately not listing `locale` or `layoutDirection`: switching the
+             app language relies on AppCompat recreating the activity.
+        -->
+        <!--
+             singleTask, so a PDF shared in while the app is already running
+             reaches onNewIntent instead of stacking a second MainActivity. With
+             the default launch mode it did stack one, each with its own ViewModel
+             and its own reader mode, and going back landed on a library that had
+             never heard of the document just imported.
+        -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
-            android:label="@string/app_name"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.JpkiSigner">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -64,13 +84,7 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-
-        <!-- Temporary card bring-up screen; no longer the launcher. -->
-        <activity
-            android:name=".CardDebugActivity"
-            android:exported="true"
-            android:label="JPKI Card Debug"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <!-- The card bring-up screen lives in src/debug and is declared there. -->
     </application>
 
 </manifest>

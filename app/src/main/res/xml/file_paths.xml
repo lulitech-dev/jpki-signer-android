@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Share-out only: grants read access to head.pdf under filesDir/documents. -->
+<!--
+  Share-out only. Each document lives at filesDir/documents/<id>/<its real name>,
+  and the whole subtree is exposed because the filename is the document's own and
+  is what a recipient receives.
+-->
 <paths>
     <files-path
         name="documents"

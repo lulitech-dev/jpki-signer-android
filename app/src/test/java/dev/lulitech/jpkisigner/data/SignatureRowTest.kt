@@ -1,6 +1,7 @@
 package dev.lulitech.jpkisigner.data
 
 import dev.lulitech.jpkisigner.pdf.SignatureInfo
+import dev.lulitech.jpkisigner.pdf.SignatureIntegrity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,7 +15,7 @@ class SignatureRowTest {
             location = null,
             signedAt = null,
             signerCommonName = null,
-            integrityOk = true,
+            integrity = SignatureIntegrity.OK,
             coversWholeDocument = it == n - 1,
         )
     }

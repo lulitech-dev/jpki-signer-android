@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher background. A flat colour rather than a gradient: the mark is the
+  identity, and a solid ground is what stays legible under every mask shape and
+  at the smallest sizes a launcher renders.
+-->
+<resources>
+    <color name="ic_launcher_background">#1F3A5F</color>
+</resources>

@@ -30,6 +30,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -37,13 +41,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import dev.lulitech.jpkisigner.data.DocumentSharing
-import dev.lulitech.jpkisigner.data.DocumentSigner
 import dev.lulitech.jpkisigner.data.DocumentStore
-import dev.lulitech.jpkisigner.jpki.JpkiKey
-import dev.lulitech.jpkisigner.jpki.JpkiSession
 import dev.lulitech.jpkisigner.jpki.NfcCardReader
-import dev.lulitech.jpkisigner.pdf.ChangesNotPermittedException
-import dev.lulitech.jpkisigner.pdf.PdfRejection
 import dev.lulitech.jpkisigner.pdf.SignParams
 import dev.lulitech.jpkisigner.ui.AboutDialog
 import dev.lulitech.jpkisigner.ui.DocumentListScreen
@@ -55,8 +54,11 @@ import dev.lulitech.jpkisigner.ui.NoticesScreen
 import dev.lulitech.jpkisigner.ui.SigningForm
 import dev.lulitech.jpkisigner.ui.SigningSheet
 import dev.lulitech.jpkisigner.ui.SigningState
+import dev.lulitech.jpkisigner.ui.messageFor
+import dev.lulitech.jpkisigner.ui.pinErrorFor
 import dev.lulitech.jpkisigner.ui.theme.JpkiSignerTheme
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -68,19 +70,16 @@ import java.io.File
 class MainActivity : AppCompatActivity() {
 
     private lateinit var store: DocumentStore
-    private lateinit var signer: DocumentSigner
     private lateinit var reader: NfcCardReader
 
     /**
-     * What the NFC callback should do on the next tap, or null to ignore taps.
+     * Whether the NFC radio is currently on, re-read on every resume.
      *
-     * Volatile because the callback runs on a binder thread. Reading Compose or
-     * View state directly from there can observe stale values -- that already
-     * caused the app to validate a signature PIN against the authentication
-     * key's rules once.
+     * Compose state rather than a direct read at composition time: the user can
+     * switch NFC on in Settings and come straight back, and the signing sheet has
+     * to stop refusing at that point without needing the screen to be rebuilt.
      */
-    @Volatile
-    private var pendingRun: ((JpkiSession) -> Unit)? = null
+    private val nfcEnabled = mutableStateOf(false)
 
     /**
      * Held by the activity rather than created inside the composition, so an
@@ -105,7 +104,6 @@ class MainActivity : AppCompatActivity() {
         PDFBoxResourceLoader.init(applicationContext)
 
         store = DocumentStore(File(filesDir, "documents").apply { mkdirs() })
-        signer = DocumentSigner(store)
         reader = NfcCardReader(this)
 
         setContent { JpkiSignerTheme { App() } }
@@ -126,8 +124,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        nfcEnabled.value = reader.isEnabled
         if (reader.isEnabled) {
-            reader.start { session -> pendingRun?.invoke(session) }
+            // Straight to the ViewModel. The run it dispatches to outlives this
+            // activity, so a card tapped after a recreation still reaches the
+            // signing flow that was already under way.
+            // Both halves go to the ViewModel: a tap that cannot be turned into a
+            // session still consumed the armed run, so it has to be reported
+            // rather than dropped on the binder thread.
+            reader.start(viewModel::onCard, viewModel::onCardUnusable)
         }
     }
 
@@ -143,14 +148,42 @@ class MainActivity : AppCompatActivity() {
         val documents by viewModel.documents.collectAsState()
         val detail by viewModel.detail.collectAsState()
         val importError by viewModel.importError.collectAsState()
+        val signing by viewModel.signing.collectAsState()
 
-        var showAbout by remember { mutableStateOf(false) }
-        var showNotices by remember { mutableStateOf(false) }
-        var showLanguages by remember { mutableStateOf(false) }
-        var signing by remember { mutableStateOf(false) }
-        var signingState by remember { mutableStateOf<SigningState>(SigningState.Form) }
-        var form by remember { mutableStateOf(SigningForm()) }
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        // Saveable, because not every configuration change is handled in place:
+        // `locale` and `layoutDirection` are deliberately absent from the
+        // manifest's configChanges so AppCompat can recreate on a language switch,
+        // and uiMode, density and font scale are not listed either.
+        var showAbout by rememberSaveable { mutableStateOf(false) }
+        var showNotices by rememberSaveable { mutableStateOf(false) }
+        var showLanguages by rememberSaveable { mutableStateOf(false) }
+        // The one piece of signing state that stays in the composition. Its PIN
+        // is a String and cannot be wiped, so it is deliberately not kept
+        // anywhere longer-lived than the screen showing the field.
+        //
+        // Saved across a recreation, but *without* the PIN -- see the saver. The
+        // signing flow itself lives in the ViewModel and survives regardless, so
+        // without this a language switch mid-form reopened the sheet with the
+        // reason and location the user had already typed thrown away.
+        var form by rememberSaveable(stateSaver = SigningFormSaver) {
+            mutableStateOf(SigningForm())
+        }
+        val scope = rememberCoroutineScope()
+        val sheetState = rememberModalBottomSheetState(
+            skipPartiallyExpanded = true,
+            // A card operation in flight cannot be cancelled, so the sheet must
+            // not be swipeable away while one is: dismissing it would leave the
+            // user believing they had stopped a signature that still lands.
+            confirmValueChange = { signing?.state != SigningState.Working },
+        )
+
+        // Reader mode is on for as long as this screen is, and says nothing when
+        // the radio is off or absent -- so the signing sheet has to say it.
+        val nfcProblem = when {
+            !reader.isAvailable -> stringResource(R.string.sign_nfc_unavailable)
+            !nfcEnabled.value -> stringResource(R.string.sign_nfc_disabled)
+            else -> null
+        }
 
         // Detail is a screen, not a dialog: back should return to the list.
         BackHandler(enabled = showNotices) { showNotices = false }
@@ -226,8 +259,7 @@ class MainActivity : AppCompatActivity() {
                         detail = current,
                         onSign = {
                             form = SigningForm()
-                            signingState = SigningState.Form
-                            signing = true
+                            viewModel.openSigningSheet(current.id)
                         },
                         onShare = { exportName ->
                             startActivity(
@@ -239,7 +271,10 @@ class MainActivity : AppCompatActivity() {
                             )
                         },
                         onDeleteCascade = { truncateTo ->
-                            viewModel.deleteSignatureCascade(current.id, truncateTo)
+                            // Joined, so the screen can hold the swept rows off
+                            // screen until the reloaded detail is published rather
+                            // than letting them spring back mid-delete.
+                            viewModel.deleteSignatureCascade(current.id, truncateTo).join()
                         },
                         onBack = viewModel::closeDetail,
                     )
@@ -275,66 +310,80 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        if (signing) {
-            val documentId = detail?.id
+        signing?.let { sheet ->
+            fun close() {
+                // Same reason as confirmValueChange above: there is nothing to
+                // dismiss to while the card is being talked to.
+                //
+                // Putting the sheet back, not just declining. Material3 asks
+                // *after* it has already animated to Hidden, and this composable
+                // stays in the tree either way -- so a bare refusal left it parked
+                // off screen with a run still under way: every state that run went
+                // on to publish rendered where nobody could see it, the outcome
+                // included, and reopening the sheet did nothing because it had
+                // never been removed.
+                if (sheet.state == SigningState.Working) {
+                    scope.launch { sheetState.show() }
+                    return
+                }
+                scope.launch {
+                    // Hide before the sheet leaves the tree. Taking it out while
+                    // still Expanded skipped the exit animation -- and, because
+                    // this SheetState outlives each opening, left it Expanded for
+                    // the next one, which then appeared with no entrance animation
+                    // either. On a swipe Material3 has already hidden it, so this
+                    // is a no-op there.
+                    sheetState.hide()
+                    // Asked after the animation rather than before it: deciding
+                    // and taking the armed run has to stay one atomic step, so
+                    // there is no way to ask permission without also committing.
+                    // The ViewModel refuses for one case this cannot see -- a run
+                    // already taken by a card tap that has not published Working
+                    // yet -- and then the sheet comes back.
+                    if (viewModel.closeSigningSheet()) {
+                        form = SigningForm()
+                    } else {
+                        sheetState.show()
+                    }
+                }
+            }
+
             ModalBottomSheet(
-                onDismissRequest = {
-                    signing = false
-                    pendingRun = null
-                    form = SigningForm()
-                },
+                onDismissRequest = ::close,
                 sheetState = sheetState,
             ) {
                 SigningSheet(
-                    state = signingState,
+                    state = sheet.state,
                     form = form,
                     pinError = pinErrorFor(form.pin),
+                    nfcProblem = nfcProblem,
+                    acceptLastAttempt = sheet.acceptLastAttempt,
                     onFormChange = { form = it },
                     onStart = {
-                        if (documentId == null) return@SigningSheet
-                        signingState = SigningState.WaitingForCard
-                        // Snapshot the form on the main thread; the callback must
-                        // never read Compose state itself.
+                        // Snapshot the form on the main thread; the run must never
+                        // read Compose state itself.
                         val params = SignParams(
                             reason = form.reason.ifBlank { null },
                             location = form.location.ifBlank { null },
+                            // The installed version, not a literal: a hardcoded
+                            // one drifts from versionName without failing.
+                            applicationVersion = versionName(),
                         )
                         val pin = form.pin.toCharArray()
-                        pendingRun = { session ->
-                            signingState = SigningState.Working
-                            try {
-                                signer.sign(session, documentId, pin, params)
-                                runOnUiThread {
-                                    signingState = SigningState.Succeeded
-                                    form = SigningForm()
-                                    viewModel.reloadDetail(documentId)
-                                }
-                            } catch (e: Exception) {
-                                val remaining = (e as? DocumentSigner.Failure)?.remainingAttempts
-                                // A refusal the user can understand and act on,
-                                // rather than an exception string.
-                                val message = if (e is ChangesNotPermittedException) {
-                                    getString(R.string.sign_changes_not_permitted)
-                                } else {
-                                    e.message ?: e::class.java.simpleName
-                                }
-                                runOnUiThread {
-                                    signingState = SigningState.Failed(message, remaining)
-                                }
-                            } finally {
-                                // One VERIFY per user action: clear the pending
-                                // run so a card left in the field cannot trigger
-                                // a second attempt.
-                                pendingRun = null
-                                pin.fill(' ')
-                            }
-                        }
+                        // Drop the PIN from the form as soon as it is snapshotted.
+                        // A String cannot be wiped, so the only thing that helps is
+                        // holding it for less time, and the field is not shown
+                        // again anywhere in the rest of this flow.
+                        form = form.copy(pin = "")
+                        // The ViewModel owns the run and wipes the array when it
+                        // ends, however it ends.
+                        viewModel.startSigning(pin, params)
                     },
-                    onDismiss = {
-                        signing = false
-                        pendingRun = null
-                        form = SigningForm()
-                    },
+                    // Back to the form, licensed to spend the last attempt. The
+                    // PIN field is empty again on purpose -- retyping it is the
+                    // confirmation.
+                    onUseLastAttempt = viewModel::useLastAttempt,
+                    onDismiss = ::close,
                 )
             }
         }
@@ -343,13 +392,9 @@ class MainActivity : AppCompatActivity() {
     @Composable
     private fun importErrorMessage(error: ImportError): String = when (error) {
         is ImportError.Failed -> error.message
-        is ImportError.Rejected -> stringResource(
-            when (error.reason) {
-                PdfRejection.ENCRYPTED -> R.string.import_rejected_encrypted
-                PdfRejection.NO_PAGES -> R.string.import_rejected_no_pages
-                PdfRejection.UNREADABLE -> R.string.import_rejected_unreadable
-            },
-        )
+        // The same sentence the signing sheet uses. Why a file cannot be signed
+        // does not depend on whether we found out as it arrived or later.
+        is ImportError.Rejected -> messageFor(error.reason)
     }
 
     /**
@@ -360,10 +405,6 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             packageManager.getPackageInfo(packageName, 0).versionName
         }.getOrNull() ?: "?"
-
-    /** Client-side PIN validation, so malformed input never reaches the card. */
-    private fun pinErrorFor(pin: String): String? =
-        if (pin.isEmpty()) null else JpkiKey.DIGITAL_SIGNATURE.validatePin(pin.toCharArray())
 
     private fun handleIncoming(intent: Intent?) {
         val uri: Uri? = when (intent?.action) {
@@ -376,7 +417,12 @@ class MainActivity : AppCompatActivity() {
         }
         if (uri == null) return
 
-        // The read grant on a shared URI dies with this activity, so copy now.
+        // The read grant on a shared URI lasts only as long as this activity, so
+        // the copy is started now rather than deferred to whenever the document is
+        // first opened. Started, not performed: the ViewModel opens the stream on
+        // an IO thread, because a share-in must not copy a large file on the main
+        // one. It outlives a configuration change, which is as long as the grant
+        // needs to hold.
         val name = displayNameOf(uri) ?: "document.pdf"
         viewModel.import(name) { contentResolver.openInputStream(uri) }
 
@@ -389,10 +435,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Guarded, because `query` throws rather than returning null on the URIs this
+     * app is actually handed: `IllegalArgumentException` for a `file://` one --
+     * which "Open with" still sends -- and `SecurityException` when the grant is
+     * missing. Both used to crash the activity before its first frame, on a path
+     * `openInputStream` would then have read perfectly well. A name we cannot ask
+     * for is no reason to fail an import, let alone to die.
+     */
     private fun displayNameOf(uri: Uri): String? =
-        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
-            }
-            ?: uri.lastPathSegment
+        runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+        }.getOrNull() ?: uri.lastPathSegment
 }
+
+/**
+ * Saves the signing form across an activity recreation -- **without the PIN**.
+ *
+ * Saved instance state is written to a Bundle the system holds, and may be
+ * persisted to disk when the process is killed. A PIN has no business being
+ * there, and it is the one field the user can retype in seconds; reason and
+ * location are ordinary text and are the ones worth keeping.
+ */
+private val SigningFormSaver: Saver<SigningForm, Any> = listSaver(
+    save = { listOf(it.reason, it.location) },
+    restore = { SigningForm(reason = it[0], location = it[1]) },
+)

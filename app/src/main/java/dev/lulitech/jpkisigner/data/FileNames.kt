@@ -56,17 +56,29 @@ object FileNames {
      * A name that already ends in `-signed` is left alone rather than becoming
      * `-signed-signed` after a second signature; the existing token is selected
      * instead, so it stays just as editable.
+     *
+     * The result always satisfies [validateExportName]. Appending the token can
+     * push a stored name that was already at the cap over it, and a dialog that
+     * opens on a name its own confirm button rejects is worse than a shortened
+     * proposal the user can still edit.
      */
     fun proposeExportName(storedName: String): ProposedName {
         val stem = stemOf(storedName)
-        return if (stem.endsWith("-$SIGNED_TOKEN", ignoreCase = true)) {
+
+        if (stem.endsWith("-$SIGNED_TOKEN", ignoreCase = true) && fitsWithExtension(stem)) {
             val start = stem.length - SIGNED_TOKEN.length
-            ProposedName("$stem$EXTENSION", start, stem.length)
-        } else {
-            val start = stem.length + 1
-            ProposedName("$stem-$SIGNED_TOKEN$EXTENSION", start, start + SIGNED_TOKEN.length)
+            return ProposedName("$stem$EXTENSION", start, stem.length)
         }
+
+        // Room for the extension, the token, and the hyphen joining it on.
+        val room = MAX_NAME_BYTES - EXTENSION.length - SIGNED_TOKEN.length - 1
+        val base = truncateUtf8(stem, room)
+        val start = base.length + 1
+        return ProposedName("$base-$SIGNED_TOKEN$EXTENSION", start, start + SIGNED_TOKEN.length)
     }
+
+    private fun fitsWithExtension(stem: String): Boolean =
+        stem.toByteArray(Charsets.UTF_8).size + EXTENSION.length <= MAX_NAME_BYTES
 
     /** Rejects a user-supplied export name, or null when it is usable. */
     fun validateExportName(name: String): ExportNameProblem? {
@@ -76,6 +88,9 @@ object FileNames {
             trimmed.any { it == '/' || it == '\\' || it < ' ' } -> ExportNameProblem.SEPARATORS
             trimmed.toByteArray(Charsets.UTF_8).size > MAX_NAME_BYTES -> ExportNameProblem.TOO_LONG
             !trimmed.endsWith(EXTENSION, ignoreCase = true) -> ExportNameProblem.NOT_PDF
+            // ".pdf" on its own passed every check above and reached the recipient
+            // as a nameless, hidden file. The extension is a suffix, not a name.
+            trimmed.dropLast(EXTENSION.length).all { it == '.' } -> ExportNameProblem.BLANK
             else -> null
         }
     }

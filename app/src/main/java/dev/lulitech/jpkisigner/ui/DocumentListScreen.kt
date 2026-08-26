@@ -1,6 +1,5 @@
 package dev.lulitech.jpkisigner.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.lulitech.jpkisigner.R
@@ -46,16 +46,15 @@ fun DocumentListScreen(
     ) {
         items(documents, key = { it.id }) { document ->
             DeletableRow(
-                deletable = true,
                 deleteLabel = stringResource(R.string.documents_delete),
-                blockedLabel = "",
                 accessibilityLabel = stringResource(
                     R.string.a11y_delete_document,
                     document.displayName,
                 ),
                 onDeleteRequested = { pending = document },
+                onClick = { onOpen(document.id) },
             ) {
-                DocumentCard(document = document, onClick = { onOpen(document.id) })
+                DocumentCard(document)
             }
         }
 
@@ -97,16 +96,21 @@ fun DocumentListScreen(
     }
 }
 
+/** Opening is handled by the enclosing [DeletableRow], which owns the click. */
 @Composable
-private fun DocumentCard(document: DocumentUi, onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+private fun DocumentCard(document: DocumentUi) {
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(document.displayName, style = MaterialTheme.typography.titleMedium)
             Text(
                 text = if (document.signatureCount == 0) {
                     stringResource(R.string.documents_no_signature)
                 } else {
-                    stringResource(R.string.documents_signature_count, document.signatureCount)
+                    pluralStringResource(
+                        R.plurals.documents_signature_count,
+                        document.signatureCount,
+                        document.signatureCount,
+                    )
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

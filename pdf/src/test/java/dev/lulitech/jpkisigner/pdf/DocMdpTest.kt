@@ -73,7 +73,10 @@ class DocMdpTest {
             )
         }
         // And the signature itself is still valid.
-        assertTrue(SignatureInspector.inspect(signed).single().integrityOk)
+        assertEquals(
+            SignatureIntegrity.OK,
+            SignatureInspector.inspect(signed).single().integrity,
+        )
     }
 
     /** A document certified against all change must not be signed. */
@@ -93,7 +96,10 @@ class DocMdpTest {
         val certified = certifiedPdf("open.pdf", permission = 2)
         val signed = temp.newFile("out.pdf")
         PdfSigner(SoftwareSignatureProvider()).sign(certified, signed)
-        assertTrue(SignatureInspector.inspect(signed).last().integrityOk)
+        assertEquals(
+            SignatureIntegrity.OK,
+            SignatureInspector.inspect(signed).last().integrity,
+        )
     }
 
     @Test
@@ -104,7 +110,7 @@ class DocMdpTest {
 
         val signatures = SignatureInspector.inspect(twice)
         assertEquals(2, signatures.size)
-        assertTrue(signatures.all { it.integrityOk })
+        assertTrue(signatures.all { it.integrity == SignatureIntegrity.OK })
         PDDocument.load(twice).use { assertEquals(0, DocMdp.existingPermission(it)) }
     }
 }

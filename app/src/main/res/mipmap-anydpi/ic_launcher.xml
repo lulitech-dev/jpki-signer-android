@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon only, with no raster fallback: minSdk is 26, which is exactly
+  where adaptive icons arrived, so every device this app installs on can render
+  one. `mipmap-anydpi` without the usual `-v26` for the same reason: there is
+  no older platform here for the qualifier to exclude.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

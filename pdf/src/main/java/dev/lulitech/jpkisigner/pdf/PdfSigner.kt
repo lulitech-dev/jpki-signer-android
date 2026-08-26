@@ -19,7 +19,13 @@ data class SignParams(
     val location: String? = null,
     val contactInfo: String? = null,
     val applicationName: String = "JPKI Signer",
-    val applicationVersion: String = "0.1.0",
+    /**
+     * Recorded in the signature's /Prop_Build. Callers should pass the real
+     * version; the default is deliberately not a literal version number, because
+     * one hardcoded here goes stale against the app's own `versionName` without
+     * anything failing.
+     */
+    val applicationVersion: String = "unknown",
 )
 
 /**
@@ -28,26 +34,48 @@ data class SignParams(
  * Uses `saveIncrementalForExternalSigning` rather than PDFBox's blocking
  * `SignatureInterface` callback, so the card interaction is a single explicit
  * step instead of something that blocks a save thread on a user's NFC tap.
- * See PLAN.md §3.1.
+ * See DESIGN.md §3.1.
  *
  * The original bytes are never rewritten — [output] begins with [input] byte for
- * byte, which is what makes the revision stack in PLAN.md §3.3 possible.
+ * byte, which is what makes the revision stack in DESIGN.md §3.3 possible.
  */
 class PdfSigner(private val provider: SignatureProvider) {
 
     fun sign(input: File, output: File, params: SignParams = SignParams()) {
         PDDocument.load(input).use { document ->
+            // Before anything is asked of the provider. A certification signature
+            // may forbid all further change; the reference refuses in that case
+            // rather than producing a signature that breaks the existing
+            // certification, and so do we. Refusing first also means a document
+            // we were never going to sign does not cost a certificate read, which
+            // over NFC is several round trips against a card the user is holding
+            // to the phone.
+            //
+            // Note we never *write* DocMDP: our signatures are ordinary approval
+            // signatures. See DocMdp's documentation.
+            if (DocMdp.existingPermission(document) == DocMdp.NO_CHANGES_PERMITTED) {
+                throw ChangesNotPermittedException()
+            }
+
             val holderName = CertificateNames.holderName(provider.signerCertificate())
+
+            // The reference always writes a Reason, defaulting to a sentence
+            // naming the signer, so the signature is self-describing in any
+            // viewer. Deliberately Japanese regardless of app locale: it is
+            // embedded in a document destined for Japanese authorities.
+            //
+            // Only when there is a name to name it with. `holderName` is null for
+            // a certificate carrying neither the JPKI name extension nor a subject
+            // CN, and interpolating it wrote the literal
+            // "null によって署名されています。" into the document.
+            val reason = params.reason
+                ?: holderName?.let { "$it によって署名されています。" }
 
             val signature = PDSignature().apply {
                 setFilter(PDSignature.FILTER_ADOBE_PPKLITE)
                 setSubFilter(PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED)
                 setName(holderName)
-                // The reference always writes a Reason, defaulting to a sentence
-                // naming the signer, so the signature is self-describing in any
-                // viewer. Deliberately Japanese regardless of app locale: it is
-                // embedded in a document destined for Japanese authorities.
-                setReason(params.reason ?: "$holderName によって署名されています。")
+                reason?.let { setReason(it) }
                 params.location?.let { setLocation(it) }
                 params.contactInfo?.let { setContactInfo(it) }
                 signDate = Calendar.getInstance()
@@ -65,16 +93,6 @@ class PdfSigner(private val provider: SignatureProvider) {
                         },
                     )
                 }
-            }
-
-            // A certification signature may forbid all further change. The
-            // reference refuses in that case rather than producing a signature
-            // that breaks the existing certification, and so do we.
-            //
-            // Note we never *write* DocMDP: our signatures are ordinary approval
-            // signatures. See DocMdp's documentation.
-            if (DocMdp.existingPermission(document) == DocMdp.NO_CHANGES_PERMITTED) {
-                throw ChangesNotPermittedException()
             }
 
             SignatureOptions().use { options ->

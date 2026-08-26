@@ -8,11 +8,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -20,6 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.lulitech.jpkisigner.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Full licence texts for this app and everything it is built on.
@@ -56,13 +60,25 @@ fun NoticesScreen(modifier: Modifier = Modifier) {
         )
     }
 
+    // Off the main thread. Fifteen kilobytes of licence text across four raw
+    // resources is not much, but it is still file I/O, and composition is not
+    // where file I/O belongs.
+    //
+    // Read as one batch and shown only once all of it is in hand. Reading per
+    // card would have each one grow a frame or two after it was drawn, which is a
+    // worse thing to read than a screen that simply arrives complete.
+    val texts by produceState<List<String>?>(null, notices) {
+        value = withContext(Dispatchers.IO) { notices.map { context.readRaw(it.textRes) } }
+    }
+    val loaded = texts ?: return
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(notices) { notice ->
-            val text = remember(notice.textRes) { context.readRaw(notice.textRes) }
+        itemsIndexed(notices) { index, notice ->
+            val text = loaded[index]
             Card(Modifier.fillMaxWidth()) {
                 Column(
                     Modifier.padding(16.dp),

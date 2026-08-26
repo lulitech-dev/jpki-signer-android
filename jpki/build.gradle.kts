@@ -23,7 +23,7 @@ kotlin {
 }
 
 // Deliberately no PDFBox and no BouncyCastle here. This module speaks APDUs and
-// exchanges only ByteArrays with :pdf — see PLAN.md §3.
+// exchanges only ByteArrays with :pdf — see DESIGN.md §3.
 dependencies {
     testImplementation(libs.junit)
 

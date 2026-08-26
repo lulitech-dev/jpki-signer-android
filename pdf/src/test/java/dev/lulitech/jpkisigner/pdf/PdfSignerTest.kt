@@ -36,7 +36,7 @@ class PdfSignerTest {
         val sig = signatures.single()
         assertTrue(
             "CMS signature must verify against its ByteRange (error=${sig.verificationError})",
-            sig.integrityOk,
+            sig.integrity == SignatureIntegrity.OK,
         )
         assertTrue("nothing should follow the only signature", sig.coversWholeDocument)
         assertEquals("テスト署名", sig.reason)
@@ -46,10 +46,10 @@ class PdfSignerTest {
     }
 
     /**
-     * The revision stack in PLAN.md §3.3 stores one head file plus a list of
-     * prefix lengths, and "delete signature n" is a truncate. That is only sound
-     * if an incremental update leaves the original bytes untouched. This asserts
-     * the property directly rather than trusting the format.
+     * The revision model in DESIGN.md §3.3 derives every boundary from the PDF
+     * itself, and "delete signature n" is a truncate to one of them. That is only
+     * sound if an incremental update leaves the original bytes untouched. This
+     * asserts the property directly rather than trusting the format.
      */
     @Test
     fun `signing appends and never rewrites the original bytes`() {
@@ -72,9 +72,9 @@ class PdfSignerTest {
     }
 
     /**
-     * Two signatures, then truncate back to the recorded prefix length. The
+     * Two signatures, then truncate back to the earlier revision's length. The
      * result must be byte-identical to the once-signed revision and must still
-     * verify — that is the whole basis of the cascade delete in PLAN.md §3.4.
+     * verify — that is the whole basis of the cascade delete in DESIGN.md §3.4.
      */
     @Test
     fun `truncating to a recorded prefix restores an earlier valid revision`() {
@@ -92,7 +92,7 @@ class PdfSignerTest {
         signer.sign(once, twice, SignParams(reason = "second"))
         assertEquals("expected two signatures", 2, SignatureInspector.inspect(twice).size)
 
-        // "Delete signature #2" == truncate to the length recorded before it.
+        // "Delete signature #2" == truncate to the length the file had before it.
         val truncated = temp.newFile("truncated.pdf")
         truncated.writeBytes(twice.readBytes().copyOfRange(0, prefixLength.toInt()))
 
@@ -103,7 +103,11 @@ class PdfSignerTest {
         )
         val restored = SignatureInspector.inspect(truncated)
         assertEquals(1, restored.size)
-        assertTrue("the restored revision must still verify", restored.single().integrityOk)
+        assertEquals(
+            "the restored revision must still verify",
+            SignatureIntegrity.OK,
+            restored.single().integrity,
+        )
         assertTrue(restored.single().coversWholeDocument)
     }
 

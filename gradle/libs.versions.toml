@@ -8,7 +8,7 @@ agp = "9.3.1"
 kotlin = "2.2.10"
 pdfboxAndroid = "2.0.27.0"
 # BouncyCastle: one FAMILY (jdk15to18), latest patch of each artifact. See
-# PLAN.md §5.2. The jdk15on / jdk15to18 / jdk18on variants share the same
+# DESIGN.md §5.2. The jdk15on / jdk15to18 / jdk18on variants share the same
 # org.bouncycastle.* packages, so mixing families causes duplicate classes.
 # pdfbox-android pulls bcprov-jdk15to18, which fixes the family as jdk15to18.
 #
@@ -20,6 +20,10 @@ bcprov = "1.85.2"
 bcpkix = "1.85"
 bcutil = "1.85.1"
 junit = "4.13.2"
+# Test-only. Must track the kotlinx-coroutines-core that lifecycle resolves
+# (check with `:app:dependencies`); coroutines-test skews badly against a
+# different core version.
+coroutinesTest = "1.9.0"
 # Compose 1.12 (BOM 2026.08.00) requires compileSdk 37, which is not in the
 # stable SDK channel yet. Staying on the 1.11 line keeps compileSdk 36 stable
 # rather than pulling a preview platform into a signing app.
@@ -40,6 +44,9 @@ androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx"
 # per-app language API that works below API 33 (minSdk here is 26).
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 junit = { module = "junit:junit", version.ref = "junit" }
+# Provides Dispatchers.setMain, without which a ViewModel cannot be built in a
+# plain JVM test: viewModelScope resolves Dispatchers.Main eagerly.
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }

@@ -1,6 +1,24 @@
 package dev.lulitech.jpkisigner.jpki
 
 /**
+ * Why a PIN is malformed, as data rather than as a message.
+ *
+ * Same reason as [CardProblem]: this module cannot translate, and these strings
+ * used to be shown verbatim under the PIN field. `:app` resolves them.
+ */
+sealed interface PinProblem {
+
+    /** Outside the key's accepted length. [minLength] == [maxLength] when fixed. */
+    data class WrongLength(val minLength: Int, val maxLength: Int) : PinProblem
+
+    /** The 認証用 PIN is digits only. */
+    data object NotDigits : PinProblem
+
+    /** The 署名用 PIN is digits and uppercase letters only. */
+    data object NotUppercaseAlphanumeric : PinProblem
+}
+
+/**
  * The two key pairs on the 公的個人認証AP.
  *
  * EF identifiers cross-checked against independent public documentation of the
@@ -58,24 +76,20 @@ enum class JpkiKey(
      * The card cannot tell a mistyped PIN from a wrongly encoded one, so both
      * cost an attempt. Everything checkable offline is checked offline.
      */
-    fun validatePin(pin: CharArray): String? {
+    fun validatePin(pin: CharArray): PinProblem? {
         if (pin.size < pinMinLength || pin.size > pinMaxLength) {
-            return if (pinMinLength == pinMaxLength) {
-                "PIN must be exactly $pinMinLength characters"
-            } else {
-                "PIN must be $pinMinLength to $pinMaxLength characters"
-            }
+            return PinProblem.WrongLength(pinMinLength, pinMaxLength)
         }
         return when (this) {
             AUTHENTICATION ->
-                if (pin.all { it in '0'..'9' }) null else "PIN must be digits only"
+                if (pin.all { it in '0'..'9' }) null else PinProblem.NotDigits
             DIGITAL_SIGNATURE ->
                 // The card expects uppercase ASCII. Lowercase would be encoded
                 // faithfully and rejected, burning an attempt.
                 if (pin.all { it in '0'..'9' || it in 'A'..'Z' }) {
                     null
                 } else {
-                    "PIN must be digits and uppercase letters only"
+                    PinProblem.NotUppercaseAlphanumeric
                 }
         }
     }

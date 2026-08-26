@@ -5,6 +5,7 @@ import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
 import android.os.Bundle
+import java.io.IOException
 
 /** [ApduTransceiver] backed by an NFC ISO-DEP connection. */
 class IsoDepTransceiver(private val isoDep: IsoDep) : ApduTransceiver {
@@ -25,17 +26,22 @@ class NfcCardReader(private val activity: Activity) {
     val isEnabled: Boolean get() = adapter?.isEnabled == true
 
     /**
-     * Starts reader mode. [onCard] runs on a binder thread, not the main thread,
-     * and the connection is closed once it returns.
+     * Starts reader mode. Both callbacks run on a binder thread, not the main
+     * thread, and the connection is closed once [onCard] returns.
+     *
+     * @param onCard a card this app can talk to is in the field.
+     * @param onUnusable a tag was discovered but no session could be opened on it.
+     *   Reported rather than dropped: a tap that silently does nothing leaves an
+     *   armed run waiting for a card that already came and went.
      */
-    fun start(onCard: (JpkiSession) -> Unit) {
+    fun start(onCard: (JpkiSession) -> Unit, onUnusable: (CardProblem) -> Unit) {
         val adapter = adapter ?: return
         val options = Bundle().apply {
             putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, PRESENCE_CHECK_DELAY_MS)
         }
         adapter.enableReaderMode(
             activity,
-            { tag: Tag -> handle(tag, onCard) },
+            { tag: Tag -> handle(tag, onCard, onUnusable) },
             NfcAdapter.FLAG_READER_NFC_B or
                 NfcAdapter.FLAG_READER_NFC_A or
                 NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
@@ -47,11 +53,36 @@ class NfcCardReader(private val activity: Activity) {
         adapter?.disableReaderMode(activity)
     }
 
-    private fun handle(tag: Tag, onCard: (JpkiSession) -> Unit) {
-        val isoDep = IsoDep.get(tag) ?: return
+    /**
+     * Opens a session on [tag] and hands it to [onCard].
+     *
+     * Nothing may throw out of here. This runs on an NFC binder thread, where an
+     * escaping exception reaches no handler that can report it, and
+     * `IsoDep.connect` throws `IOException` for the most ordinary thing a user
+     * does -- holding the card slightly off the antenna. It is a checked
+     * exception, so Kotlin let it straight out, past every guard the signing run
+     * puts around itself.
+     */
+    private fun handle(
+        tag: Tag,
+        onCard: (JpkiSession) -> Unit,
+        onUnusable: (CardProblem) -> Unit,
+    ) {
+        // Not ISO-DEP at all: a transit pass, a hotel key, an NDEF tag. Nothing
+        // to connect to, so this is as far as it goes.
+        val isoDep = IsoDep.get(tag) ?: return onUnusable(CardProblem.NotJpkiCard)
+
         isoDep.timeout = TRANSCEIVE_TIMEOUT_MS
         try {
             isoDep.connect()
+        } catch (e: IOException) {
+            runCatching { isoDep.close() }
+            // Nothing was sent, so nothing was spent. The card was simply not held
+            // where it could be read.
+            return onUnusable(CardProblem.LostContact)
+        }
+
+        try {
             onCard(JpkiSession(IsoDepTransceiver(isoDep)))
         } finally {
             runCatching { isoDep.close() }
