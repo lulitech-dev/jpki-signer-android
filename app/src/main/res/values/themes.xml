@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppCompatActivity refuses to start without a Theme.AppCompat descendant, and
+  AppCompatActivity is required for AppCompatDelegate.setApplicationLocales,
+  which is the only per-app language API available below API 33.
+
+  Colours and typography all come from the Compose theme; this exists purely to
+  satisfy that requirement and to keep the platform action bar out of the way.
+-->
+<resources>
+    <style name="Theme.JpkiSigner" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+</resources>

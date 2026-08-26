@@ -28,6 +28,7 @@ activityCompose = "1.13.0"
 # 2.11.0 also requires compileSdk 37; 2.10.0 is the newest that builds on 36.
 lifecycleViewmodelCompose = "2.10.0"
 coreKtx = "1.15.0"
+appcompat = "1.8.0"
 
 [libraries]
 pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfboxAndroid" }
@@ -35,6 +36,9 @@ bc-prov = { module = "org.bouncycastle:bcprov-jdk15to18", version.ref = "bcprov"
 bc-pkix = { module = "org.bouncycastle:bcpkix-jdk15to18", version.ref = "bcpkix" }
 bc-util = { module = "org.bouncycastle:bcutil-jdk15to18", version.ref = "bcutil" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+# Needed only for AppCompatDelegate.setApplicationLocales, which is the only
+# per-app language API that works below API 33 (minSdk here is 26).
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 junit = { module = "junit:junit", version.ref = "junit" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-ui = { module = "androidx.compose.ui:ui" }

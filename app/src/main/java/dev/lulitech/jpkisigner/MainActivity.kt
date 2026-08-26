@@ -5,7 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -13,6 +13,7 @@ import androidx.core.content.IntentCompat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -31,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -43,10 +45,13 @@ import dev.lulitech.jpkisigner.jpki.NfcCardReader
 import dev.lulitech.jpkisigner.pdf.ChangesNotPermittedException
 import dev.lulitech.jpkisigner.pdf.PdfRejection
 import dev.lulitech.jpkisigner.pdf.SignParams
+import dev.lulitech.jpkisigner.ui.AboutDialog
 import dev.lulitech.jpkisigner.ui.DocumentListScreen
 import dev.lulitech.jpkisigner.ui.ImportError
 import dev.lulitech.jpkisigner.ui.DocumentScreen
+import dev.lulitech.jpkisigner.ui.LanguageDialog
 import dev.lulitech.jpkisigner.ui.MainViewModel
+import dev.lulitech.jpkisigner.ui.NoticesScreen
 import dev.lulitech.jpkisigner.ui.SigningForm
 import dev.lulitech.jpkisigner.ui.SigningSheet
 import dev.lulitech.jpkisigner.ui.SigningState
@@ -60,7 +65,7 @@ import java.io.File
  * PDFs arrive only by share-in (ACTION_SEND) or "Open with" (ACTION_VIEW), and
  * leave only through the share sheet; there are no SAF pickers.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var store: DocumentStore
     private lateinit var signer: DocumentSigner
@@ -139,24 +144,62 @@ class MainActivity : ComponentActivity() {
         val detail by viewModel.detail.collectAsState()
         val importError by viewModel.importError.collectAsState()
 
+        var showAbout by remember { mutableStateOf(false) }
+        var showNotices by remember { mutableStateOf(false) }
+        var showLanguages by remember { mutableStateOf(false) }
         var signing by remember { mutableStateOf(false) }
         var signingState by remember { mutableStateOf<SigningState>(SigningState.Form) }
         var form by remember { mutableStateOf(SigningForm()) }
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
         // Detail is a screen, not a dialog: back should return to the list.
-        BackHandler(enabled = detail != null) { viewModel.closeDetail() }
+        BackHandler(enabled = showNotices) { showNotices = false }
+        BackHandler(enabled = !showNotices && detail != null) { viewModel.closeDetail() }
 
         Scaffold(
             topBar = {
                 TopAppBar(
                     title = {
-                        Text(detail?.displayName ?: stringResource(R.string.documents_title))
+                        Text(
+                            when {
+                                showNotices -> stringResource(R.string.notices_title)
+                                detail != null -> detail!!.displayName
+                                else -> stringResource(R.string.documents_title)
+                            },
+                        )
+                    },
+                    actions = {
+                        // Only on the library screen; the detail screen's actions
+                        // belong to the document.
+                        if (detail == null && !showNotices) {
+                            // A globe rather than a word: it is readable whichever
+                            // language the app is currently in, which matters most
+                            // to someone who switched by accident.
+                            IconButton(onClick = { showLanguages = true }) {
+                                Icon(
+                                    painterResource(R.drawable.ic_language),
+                                    contentDescription = stringResource(R.string.language_title),
+                                )
+                            }
+                            IconButton(onClick = { showAbout = true }) {
+                                Icon(
+                                    Icons.Outlined.Info,
+                                    contentDescription = stringResource(R.string.about),
+                                )
+                            }
+                        }
                     },
                     navigationIcon = {
                         // A visible affordance alongside the gesture; a swipe
                         // alone is undiscoverable.
-                        if (detail != null) {
+                        if (showNotices) {
+                            IconButton(onClick = { showNotices = false }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.back),
+                                )
+                            }
+                        } else if (detail != null) {
                             IconButton(onClick = viewModel::closeDetail) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowBack,
@@ -170,7 +213,9 @@ class MainActivity : ComponentActivity() {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 val current = detail
-                if (current == null) {
+                if (showNotices) {
+                    NoticesScreen()
+                } else if (current == null) {
                     DocumentListScreen(
                         documents = documents,
                         onOpen = viewModel::open,
@@ -200,6 +245,21 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+
+        if (showLanguages) {
+            LanguageDialog(onDismiss = { showLanguages = false })
+        }
+
+        if (showAbout) {
+            AboutDialog(
+                versionName = versionName(),
+                onShowNotices = {
+                    showAbout = false
+                    showNotices = true
+                },
+                onDismiss = { showAbout = false },
+            )
         }
 
         importError?.let { message ->
@@ -291,6 +351,15 @@ class MainActivity : ComponentActivity() {
             },
         )
     }
+
+    /**
+     * Read from the installed package rather than BuildConfig, which would mean
+     * turning the buildConfig feature on for a single string.
+     */
+    private fun versionName(): String =
+        runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }.getOrNull() ?: "?"
 
     /** Client-side PIN validation, so malformed input never reaches the card. */
     private fun pinErrorFor(pin: String): String? =

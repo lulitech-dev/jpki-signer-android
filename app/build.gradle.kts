@@ -36,6 +36,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    androidResources {
+        // Generates locale_config.xml from the values-* folders, so the list of
+        // supported languages cannot drift from the translations that exist.
+        generateLocaleConfig = true
+    }
 }
 
 kotlin {
@@ -48,6 +54,7 @@ dependencies {
     implementation(project(":jpki"))
     implementation(project(":pdf"))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

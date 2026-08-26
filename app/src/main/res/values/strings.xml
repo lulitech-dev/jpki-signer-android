@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Default (Japanese). English lives in values-en/. -->
 <resources>
-    <string name="app_name">JPKI 署名</string>
+    <!-- A product name, not a phrase. The same in every locale. -->
+    <string name="app_name" translatable="false">JPKI Signer</string>
 
     <!-- Document list -->
     <string name="documents_title">書類</string>
-    <string name="documents_empty_title">書類がありません</string>
-    <string name="documents_empty_body">ほかのアプリから PDF を共有すると、ここに追加されます。</string>
     <string name="documents_signature_count">署名 %1$d 件</string>
     <string name="documents_no_signature">署名なし</string>
     <string name="documents_delete">削除</string>
@@ -59,4 +58,33 @@
     <string name="export_error_not_pdf">ファイル名は .pdf で終わる必要があります</string>
     <string name="document_trailing_changes">最後の署名より後に、この文書は変更されています。</string>
     <string name="sign_changes_not_permitted">この文書は変更が許可されていないため、署名できません。</string>
+    <string name="documents_import_hint">ほかのアプリから PDF を共有すると、ここに追加されます。</string>
+    <string name="about">このアプリについて</string>
+    <string name="about_title">このアプリについて</string>
+    <string name="about_version">バージョン %1$s</string>
+    <string name="about_author_heading">著作権</string>
+    <string name="about_copyright">© %1$s ルリテック合同会社</string>
+    <string name="about_based_on_heading">本アプリの基となったソフトウェア</string>
+    <string name="about_based_on">PDF 署名の処理は jpki-pdf-signer（JPKI PDF SIGNER）を基にしています。\n© 2017-2023 HIRUKAWA Ryo</string>
+    <string name="about_libraries_heading">使用しているソフトウェア</string>
+    <string name="about_libraries">PdfBox-Android および Apache PDFBox — Apache License 2.0\nBouncy Castle — Bouncy Castle Licence（MIT 系）\nAndroid Jetpack / Jetpack Compose — Apache License 2.0\nMaterial Design Icons — Apache License 2.0</string>
+    <string name="about_privacy_heading">通信について</string>
+    <string name="about_privacy">このアプリはインターネットに接続しません。書類も暗証番号も端末の外に出ることはありません。</string>
+    <string name="notices_title">ライセンス表示</string>
+    <string name="about_notices">ライセンス表示を見る</string>
+    <string name="about_license">BSD 2-Clause License</string>
+    <string name="about_license_heading">ライセンス</string>
+    <string name="notice_app_subtitle">BSD 2-Clause License</string>
+    <string name="notice_reference_heading">jpki-pdf-signer (JPKI PDF SIGNER)</string>
+    <string name="notice_reference_subtitle">PDF 署名処理の基となったソフトウェア</string>
+    <string name="notice_bouncycastle_heading">Bouncy Castle</string>
+    <string name="notice_bouncycastle_subtitle">Bouncy Castle Licence</string>
+    <string name="notice_apache_heading">Apache PDFBox / PdfBox-Android / Android Jetpack / Kotlin / Material Design Icons</string>
+    <string name="notice_apache_subtitle">Apache License, Version 2.0</string>
+    <string name="about_homepage" translatable="false">https://lulitech.dev</string>
+    <string name="about_repository" translatable="false">https://github.com/lulitech-dev/jpki-signer-android</string>
+    <string name="language_title">言語</string>
+    <string name="language_system">端末の設定に従う</string>
+    <string name="language_japanese">日本語</string>
+    <string name="language_english">English</string>
 </resources>

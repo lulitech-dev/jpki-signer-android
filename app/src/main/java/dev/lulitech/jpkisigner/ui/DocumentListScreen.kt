@@ -2,7 +2,6 @@ package dev.lulitech.jpkisigner.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,23 +15,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.lulitech.jpkisigner.R
 
 /**
  * Screen 1: the document library.
  *
- * A plain list of card-styled rows. Deletion is by swipe with a confirming
- * dialog, so there are no delete buttons.
+ * A plain list of card-styled rows. Deletion is by swipe, long-press or an
+ * accessibility action, so there are no delete buttons.
  */
 @Composable
 fun DocumentListScreen(
@@ -41,11 +37,6 @@ fun DocumentListScreen(
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (documents.isEmpty()) {
-        EmptyLibrary(modifier)
-        return
-    }
-
     var pending by remember { mutableStateOf<DocumentUi?>(null) }
 
     LazyColumn(
@@ -66,6 +57,21 @@ fun DocumentListScreen(
             ) {
                 DocumentCard(document = document, onClick = { onOpen(document.id) })
             }
+        }
+
+        // Sharing a PDF in is the only way to add one, so the instruction has to
+        // stay reachable rather than vanish once the library is not empty. As the
+        // last row it follows the documents it is about, and on an empty library
+        // it is simply the only thing there.
+        item {
+            Text(
+                text = stringResource(R.string.documents_import_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
+            )
         }
     }
 
@@ -104,25 +110,6 @@ private fun DocumentCard(document: DocumentUi, onClick: () -> Unit) {
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun EmptyLibrary(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                stringResource(R.string.documents_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                stringResource(R.string.documents_empty_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp),
             )
         }
     }
