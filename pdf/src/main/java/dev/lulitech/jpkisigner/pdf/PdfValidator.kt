@@ -1,6 +1,7 @@
 package dev.lulitech.jpkisigner.pdf
 
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import java.io.File
 
 /**
@@ -59,14 +60,16 @@ object PdfValidator {
                     else -> null
                 }
             }
+        } catch (e: InvalidPasswordException) {
+            // Password-protected. Caught by type rather than by matching
+            // "InvalidPassword" against the class's simple name, which is a
+            // string comparison against something no compiler checks -- it
+            // survives neither a rename upstream nor an obfuscated build, and
+            // fails by quietly reclassifying every encrypted PDF as damaged.
+            PdfRejection.ENCRYPTED
         } catch (e: Exception) {
-            // PDFBox throws InvalidPasswordException for password-protected
-            // files and IOException for damaged ones; neither is signable.
-            if (e::class.java.simpleName.contains("InvalidPassword")) {
-                PdfRejection.ENCRYPTED
-            } else {
-                PdfRejection.UNREADABLE
-            }
+            // Damaged, or not a PDF. Not signable either way.
+            PdfRejection.UNREADABLE
         }
     }
 

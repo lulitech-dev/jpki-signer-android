@@ -244,5 +244,13 @@ internal fun describe(e: Throwable): String {
     return if (message.isNullOrBlank()) e::class.java.simpleName else message
 }
 
-/** An absolute path, as `java.io` messages embed one ahead of the reason. */
-private val ABSOLUTE_PATH = Regex("""/\S+""")
+/**
+ * An absolute path, as `java.io` messages embed one ahead of the reason.
+ *
+ * A leading slash plus at least one more, i.e. a path with a directory in it --
+ * which every path `java.io` can name on Android has. Matching a bare `/\S+`
+ * also ate PDF name objects out of the messages PDFBox raises, so a report of
+ * `expected /Type /Page` reached the screen as `expected`, having lost the only
+ * two words in it that said anything.
+ */
+private val ABSOLUTE_PATH = Regex("""/(?:[^\s/]+/)+[^\s/]*""")

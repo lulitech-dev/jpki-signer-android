@@ -170,20 +170,28 @@ fun SigningSheet(
                     stringResource(R.string.sign_failed, messageFor(state.failure)),
                     color = MaterialTheme.colorScheme.error,
                 )
-                state.failure.remainingAttempts?.let {
-                    Text(
-                        // The lockout threshold comes from the key, not from the
-                        // sentence: a number written into a translation goes stale
-                        // against the card without anything failing.
-                        pluralStringResource(
-                            R.plurals.sign_attempts_warning,
-                            it,
-                            it,
-                            JpkiKey.DIGITAL_SIGNATURE.maxAttempts,
-                        ),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                // Only where the message above does not already carry the
+                // consequence. TooFewAttempts states it in full -- the count, that
+                // signing was stopped so a typo could not spend it, and the
+                // municipal window -- so this printed the same warning a second
+                // time in a second wording, directly underneath the first.
+                if (state.failure !is SignFailure.TooFewAttempts) {
+                    state.failure.remainingAttempts?.let {
+                        Text(
+                            // The lockout threshold comes from the key, not from
+                            // the sentence: a number written into a translation
+                            // goes stale against the card without anything
+                            // failing.
+                            pluralStringResource(
+                                R.plurals.sign_attempts_warning,
+                                it,
+                                it,
+                                JpkiKey.DIGITAL_SIGNATURE.maxAttempts,
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
                 // The way past our own floor. Without it, refusing at the floor is
                 // permanent: only a successful VERIFY resets the card's counter,

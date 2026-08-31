@@ -43,6 +43,21 @@ class DescribeFailureTest {
         assertEquals("OutOfMemoryError", describe(OutOfMemoryError()))
     }
 
+    /**
+     * A PDF name object is not a path.
+     *
+     * PDFBox names the object it choked on, and those names start with a slash.
+     * Stripping every slash-prefixed token took them out too, so the one part of
+     * the message that said anything was the part that got deleted.
+     */
+    @Test
+    fun `a pdf name object is not mistaken for a path`() {
+        assertEquals(
+            "expected /Type /Page but found /Font",
+            describe(IllegalStateException("expected /Type /Page but found /Font")),
+        )
+    }
+
     /** A message that was nothing but a path must not come back blank. */
     @Test
     fun `a message that is only a path falls back to the class name`() {
