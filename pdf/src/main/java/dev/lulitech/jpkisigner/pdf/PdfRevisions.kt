@@ -1,8 +1,12 @@
 package dev.lulitech.jpkisigner.pdf
 
+import com.tom_roush.pdfbox.io.RandomAccessRead
+import com.tom_roush.pdfbox.pdfparser.PDFParser
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.PDSignature
+import java.io.EOFException
 import java.io.File
+import java.io.IOException
 
 /**
  * End of the revision [signature] created: `ByteRange[2] + ByteRange[3]`.
@@ -62,11 +66,11 @@ object PdfRevisions {
      * revision ends. Asking per signature re-read a document that can be tens of
      * megabytes for each one.
      *
-     * The parsing is *not* down to once: [validate] still loads a prefix per
-     * candidate, so a document with n signatures costs n prefix copies and n
-     * parses, plus one per `%%EOF` candidate considered for each of them. That is
-     * the price of proving each boundary rather than trusting it, and it is paid
-     * once when a document is opened.
+     * The parsing is *not* down to once: [validate] parses a prefix per candidate,
+     * so a document with n signatures costs n parses, plus one per `%%EOF`
+     * candidate considered for each of them. That is the price of proving each
+     * boundary rather than trusting it, and it is paid once when a document is
+     * opened. No prefix is *copied*, though -- see [PrefixRead].
      *
      * @return an entry per signature, null where that signature is not removable;
      *   empty when the file cannot be read at all.
@@ -303,13 +307,34 @@ object PdfRevisions {
      */
     private fun validate(bytes: ByteArray, length: Long, expectedSignatures: Int): Boolean {
         if (length <= 0 || length > bytes.size) return false
-        val prefix = bytes.copyOf(length.toInt())
         return runCatching {
-            PDDocument.load(prefix).use { document ->
+            loadPrefix(bytes, length.toInt()).use { document ->
                 document.numberOfPages > 0 &&
                     document.signatureDictionaries.size == expectedSignatures
             }
         }.getOrDefault(false)
+    }
+
+    /**
+     * Parses the first [length] bytes of [bytes] as a PDF, without copying them.
+     *
+     * `PDDocument.load(byte[])` can only be given an array that *is* the document,
+     * so proving a boundary meant `bytes.copyOf(length)` first -- a second, nearly
+     * full copy of a user's file alongside the one the caller is already holding.
+     * Peak memory was therefore about twice the document's size at the moment of
+     * checking the newest boundary, and the reads here are guarded against
+     * `OutOfMemoryError` precisely because that is reachable: a large but
+     * perfectly sound document could fail to open and be reported as one we could
+     * not read. [PrefixRead] is the same view over the array the caller already
+     * has.
+     *
+     * This is the shape of `PDDocument.load(byte[])` itself, minus the copy: it
+     * wraps the array in a [RandomAccessRead] and hands it to a [PDFParser].
+     */
+    private fun loadPrefix(bytes: ByteArray, length: Int): PDDocument {
+        val parser = PDFParser(PrefixRead(bytes, length))
+        parser.parse()
+        return parser.getPDDocument()
     }
 
     /** Length of the EOL sequence at [at]: CRLF, a bare CR or LF, or nothing. */
@@ -360,4 +385,90 @@ object PdfRevisions {
     private const val LF: Byte = 0x0A
     private const val ZERO = 0x30
     private const val NINE = 0x39
+}
+
+/**
+ * A read-only view of the first [limit] bytes of [bytes].
+ *
+ * Exists so a revision boundary can be proved without copying the prefix being
+ * proved -- see [PdfRevisions.loadPrefix]. It is deliberately a plain view and
+ * not a subclass of anything: the whole point is that it allocates nothing
+ * proportional to the document.
+ *
+ * Semantics follow PDFBox's own `RandomAccessBuffer` exactly, including the two
+ * that are easy to get wrong and that its parser relies on:
+ *
+ *  - seeking **beyond** the end is allowed, and [getPosition] then reports where
+ *    it was asked to go rather than where the data stops. The parser follows
+ *    cross-reference offsets that a damaged file can put past EOF, and reads back
+ *    the position afterwards; clamping would quietly turn those into a seek to
+ *    the end of the file.
+ *  - a read at or past the end answers -1, not 0, and [available] there is
+ *    negative rather than zero.
+ */
+internal class PrefixRead(
+    private val bytes: ByteArray,
+    private val limit: Int,
+) : RandomAccessRead {
+
+    init {
+        require(limit in 0..bytes.size) { "limit $limit outside 0..${bytes.size}" }
+    }
+
+    private var position = 0L
+    private var closed = false
+
+    override fun read(): Int =
+        if (position >= limit) -1 else bytes[position++.toInt()].toInt() and 0xFF
+
+    override fun read(buffer: ByteArray): Int = read(buffer, 0, buffer.size)
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (position >= limit) return -1
+        val taken = minOf(length.toLong(), limit - position).toInt()
+        bytes.copyInto(buffer, offset, position.toInt(), position.toInt() + taken)
+        position += taken
+        return taken
+    }
+
+    override fun readFully(length: Int): ByteArray {
+        val out = ByteArray(length)
+        var filled = 0
+        while (filled < length) {
+            val taken = read(out, filled, length - filled)
+            if (taken < 0) throw EOFException()
+            filled += taken
+        }
+        return out
+    }
+
+    override fun getPosition(): Long = position
+
+    override fun seek(position: Long) {
+        if (position < 0) throw IOException("Invalid position $position")
+        this.position = position
+    }
+
+    override fun rewind(bytes: Int) = seek(position - bytes)
+
+    override fun peek(): Int =
+        if (position >= limit) -1 else bytes[position.toInt()].toInt() and 0xFF
+
+    override fun length(): Long = limit.toLong()
+
+    /**
+     * Deliberately allowed to go negative, because PDFBox's does: it is
+     * `length() - getPosition()` with no floor, so a reader seeked past the end
+     * reports how far past it is. Clamping to zero here would be tidier and would
+     * be a difference, and this class exists to have none.
+     */
+    override fun available(): Int = minOf(limit - position, Int.MAX_VALUE.toLong()).toInt()
+
+    override fun isEOF(): Boolean = position >= limit
+
+    override fun isClosed(): Boolean = closed
+
+    override fun close() {
+        closed = true
+    }
 }
