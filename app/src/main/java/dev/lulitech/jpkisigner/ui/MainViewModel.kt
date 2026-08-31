@@ -17,6 +17,7 @@ import dev.lulitech.jpkisigner.pdf.SignParams
 import dev.lulitech.jpkisigner.pdf.SignatureInspector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +27,7 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 import java.io.File
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /** Why an incoming file did not become a document. */
@@ -69,6 +71,19 @@ data class DocumentDetailUi(
      * looked unsigned, and silently offered no way to remove anything from it.
      */
     val unreadable: Boolean = false,
+    /**
+     * [unreadable] because the document did not fit in memory, rather than
+     * because it is damaged.
+     *
+     * Reading the history holds the whole file plus what PDFBox builds from it,
+     * so `OutOfMemoryError` is an expected outcome on a large document and a
+     * small device. It used to borrow "this document could not be read" -- the
+     * sentence reserved for a file that really is broken -- which tells the owner
+     * of a perfectly sound PDF that their document is damaged. Same distinction
+     * as [SignatureIntegrity.UNCHECKED] against MISMATCH: a limit of this app is
+     * not a finding about the file.
+     */
+    val tooLarge: Boolean = false,
 )
 
 /** The signing sheet: which document it is for, and where the flow has got to. */
@@ -113,6 +128,36 @@ class MainViewModel(
 
     private val _signing = MutableStateFlow<SigningUi?>(null)
     val signing: StateFlow<SigningUi?> = _signing.asStateFlow()
+
+    /**
+     * A document is being read for the detail screen.
+     *
+     * Opening one parses the whole file and verifies a signature per row, which
+     * on a large document is seconds. Nothing was published until it finished, so
+     * a tap on a library row did nothing at all for that time -- indistinguishable
+     * from a tap that missed.
+     */
+    private val _detailLoading = MutableStateFlow(false)
+    val detailLoading: StateFlow<Boolean> = _detailLoading.asStateFlow()
+
+    /**
+     * Serial number of the newest detail request.
+     *
+     * A load that finishes after a newer request was made publishes nothing. Two
+     * loads race on the IO dispatcher and resume in whatever order they finish,
+     * so without this a slow read of the first document tapped could land *after*
+     * a fast read of the second and put the wrong document on screen -- or put
+     * back one the user had just closed or deleted.
+     *
+     * Atomic, and claimed by [open] *before* it launches anything: the number
+     * belongs to the moment the user tapped, not to whenever a dispatcher gets
+     * round to the coroutine body. Taking it inside the launch made the guard
+     * depend on whether the dispatcher runs that body eagerly, which is the kind
+     * of thing that holds on `Dispatchers.Main.immediate` and stops holding under
+     * test. Atomic because [reloadDetail] reaches this from the NFC binder
+     * thread, the same reason [pendingRun] is.
+     */
+    private val detailRequest = AtomicInteger(0)
 
     /**
      * One armed signing run: what the next card tap should do, and the PIN it
@@ -252,15 +297,29 @@ class MainViewModel(
 
     fun delete(id: String) = viewModelScope.launch {
         withContext(io) { orElse(Unit) { store.delete(id) } }
-        if (_detail.value?.id == id) _detail.value = null
+        if (_detail.value?.id == id) closeDetail()
         refresh()
     }
 
-    fun open(id: String) = viewModelScope.launch {
-        _detail.value = withContext(io) { loadDetail(id) }
+    fun open(id: String): Job {
+        val request = detailRequest.incrementAndGet()
+        _detailLoading.value = true
+        return viewModelScope.launch {
+            val loaded = withContext(io) { loadDetail(id) }
+            // Someone asked for something else while this was reading -- another
+            // document, or the screen being closed. That request owns the screen
+            // now, and owns clearing the spinner too.
+            if (request != detailRequest.get()) return@launch
+            _detail.value = loaded
+            _detailLoading.value = false
+        }
     }
 
     fun closeDetail() {
+        // Bumped so a read still in flight cannot put the document back on screen
+        // after the user has left it.
+        detailRequest.incrementAndGet()
+        _detailLoading.value = false
         _detail.value = null
     }
 
@@ -432,14 +491,33 @@ class MainViewModel(
 
     private fun loadDetail(id: String): DocumentDetailUi? {
         val document = store.get(id) ?: return null
+
+        // Which kind of failure, not just that there was one. Running out of
+        // memory on a large file and failing to parse a damaged one both end with
+        // no signatures to show, and they are different things to tell the owner
+        // of the document.
+        var ranOutOfMemory = false
+        fun <T> read(block: () -> T): T? =
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: OutOfMemoryError) {
+                ranOutOfMemory = true
+                null
+            } catch (e: Throwable) {
+                null
+            }
+
         // One read serving both. Each of these used to pull its own full copy of
         // the document into memory, so opening a large file cost three times its
         // size at peak rather than two.
-        val bytes = orElse(null) { document.head.readBytes() }
-        val signatures = bytes?.let { orElse(null) { SignatureInspector.inspect(it) } }
+        val bytes = read { document.head.readBytes() }
+        val signatures = bytes?.let { read { SignatureInspector.inspect(it) } }
         // Revision boundaries come from the PDF, so imported signatures are
         // handled exactly like ones this app made.
-        val truncationLengths = bytes?.let { orElse(null) { PdfRevisions.truncationLengths(it) } }
+        val truncationLengths = bytes?.let { read { PdfRevisions.truncationLengths(it) } }
+        val failed = bytes == null || signatures == null || truncationLengths == null
         return DocumentDetailUi(
             id = document.id,
             displayName = document.displayName,
@@ -449,7 +527,8 @@ class MainViewModel(
             // must not look the same on screen: an empty list reads as "this
             // document is unsigned", which is a claim we cannot make about a file
             // we failed to parse.
-            unreadable = bytes == null || signatures == null || truncationLengths == null,
+            unreadable = failed,
+            tooLarge = failed && ranOutOfMemory,
         )
     }
 

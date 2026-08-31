@@ -15,9 +15,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -35,6 +37,7 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -149,6 +152,7 @@ class MainActivity : AppCompatActivity() {
         val detail by viewModel.detail.collectAsState()
         val importError by viewModel.importError.collectAsState()
         val signing by viewModel.signing.collectAsState()
+        val detailLoading by viewModel.detailLoading.collectAsState()
 
         // Saveable, because not every configuration change is handled in place:
         // `locale` and `layoutDirection` are deliberately absent from the
@@ -277,6 +281,22 @@ class MainActivity : AppCompatActivity() {
                             viewModel.deleteSignatureCascade(current.id, truncateTo).join()
                         },
                         onBack = viewModel::closeDetail,
+                    )
+                }
+
+                // Opening a document parses the whole file and verifies a
+                // signature per row, which on a large one is seconds. Without
+                // this the library simply sat there, so a tap that was working
+                // looked exactly like a tap that had missed.
+                //
+                // Over the list rather than in place of it: the list is still
+                // what the user is looking at, and a load that turns out to be
+                // quick should not blank the screen on its way through. It is
+                // deliberately not shown for a reload behind an open detail
+                // screen, where the rows already on screen are the answer.
+                if (detailLoading && current == null) {
+                    LinearProgressIndicator(
+                        Modifier.fillMaxWidth().align(Alignment.TopCenter),
                     )
                 }
             }

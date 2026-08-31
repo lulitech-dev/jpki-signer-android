@@ -143,6 +143,18 @@ offered no way to remove anything from it. `DocumentDetailUi.unreadable` keeps t
 two apart, because "this document has no signatures" is a claim, and it can only
 be made about a document we actually read.
 
+**Nor is a document that did not fit a damaged one.** That is a third state, and
+`DocumentDetailUi.tooLarge` carries it: running out of memory is a limit of this
+app on this device, and saying "this document could not be read" about a
+perfectly sound PDF is the same unearned claim in the other direction. The
+headroom is real, not theoretical, which is why `PdfRevisions` proves a boundary
+through a bounded *view* of the bytes rather than `bytes.copyOf(length)` — that
+copy put a second, nearly complete copy of the user's file beside the one the
+caller was already holding, at the moment of checking the newest boundary.
+`PrefixRead` is that view, and it is held to PDFBox's own reader operation for
+operation, including seeking past the end, because a boundary computed wrong
+deletes work.
+
 **What the list is allowed to claim.** A signature list reads as a validity
 statement, so it shows only what an offline app can actually prove:
 

@@ -129,6 +129,11 @@
     <string name="export_error_too_long">ファイル名が長すぎます（255 バイトまで）</string>
     <string name="export_error_not_pdf">ファイル名は .pdf で終わる必要があります</string>
     <string name="document_unreadable">この書類を読み取れませんでした。署名の表示と削除はできません。</string>
+    <!--
+         A limit of this device, not a finding about the file. Kept apart from
+         document_unreadable, which says the document is damaged.
+    -->
+    <string name="document_too_large">この書類はこの端末で扱うには大きすぎました。署名の表示と削除はできません。書類が壊れているわけではありません。</string>
     <string name="document_trailing_changes">最後の署名より後に、この文書は変更されています。</string>
     <string name="sign_changes_not_permitted">この文書は変更が許可されていないため、署名できません。</string>
     <string name="documents_import_hint">ほかのアプリから PDF を共有すると、ここに追加されます。</string>

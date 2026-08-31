@@ -83,6 +83,57 @@ class DetailReadabilityTest {
         }
 
     /**
+     * Opening a document takes as long as parsing it, and the screen used to say
+     * nothing at all for that time: a tap that was working looked exactly like a
+     * tap that had missed.
+     */
+    @Test
+    fun `a read in progress is visible, and is finished with`() = runTest(dispatcher) {
+        val id = store.import("contract.pdf", MINIMAL_PDF.inputStream())
+
+        val job = viewModel.open(id)
+        assertTrue("the spinner is on from the moment of the tap", viewModel.detailLoading.value)
+
+        job.join()
+
+        assertFalse(viewModel.detailLoading.value)
+        assertEquals(id, viewModel.detail.value?.id)
+    }
+
+    /**
+     * A read the user walked away from must not reopen the screen behind them.
+     *
+     * Two reads race on the IO dispatcher and resume in whatever order they
+     * finish, so a slow one landing late could put back a document that had been
+     * closed -- or, between two taps, put up the wrong one.
+     */
+    @Test
+    fun `a read the user left does not reopen the screen`() = runTest(dispatcher) {
+        val id = store.import("contract.pdf", MINIMAL_PDF.inputStream())
+
+        val job = viewModel.open(id)
+        viewModel.closeDetail()
+        job.join()
+
+        assertNull(viewModel.detail.value)
+        assertFalse("nor leave the spinner running", viewModel.detailLoading.value)
+    }
+
+    /** Between two taps, the newer one owns the screen however the reads finish. */
+    @Test
+    fun `the newest request is the one that lands`() = runTest(dispatcher) {
+        val first = store.import("first.pdf", MINIMAL_PDF.inputStream())
+        val second = store.import("second.pdf", MINIMAL_PDF.inputStream())
+
+        val stale = viewModel.open(first)
+        val fresh = viewModel.open(second)
+        stale.join()
+        fresh.join()
+
+        assertEquals(second, viewModel.detail.value?.id)
+    }
+
+    /**
      * The same distinction one screen up.
      *
      * The library row shows a count and nothing else, and `SignatureInspector.count`

@@ -206,10 +206,16 @@ fun DocumentScreen(
                 // sentence.
                 Text(
                     stringResource(
-                        if (detail.unreadable) {
-                            R.string.document_unreadable
-                        } else {
-                            R.string.document_no_signatures
+                        when {
+                            // Three sentences, not two. "Too large for this
+                            // device" is a limit of the app; "could not be read"
+                            // says the document is damaged, and telling the owner
+                            // of a sound PDF that about their file is exactly the
+                            // kind of unearned claim this screen avoids
+                            // everywhere else.
+                            detail.tooLarge -> R.string.document_too_large
+                            detail.unreadable -> R.string.document_unreadable
+                            else -> R.string.document_no_signatures
                         },
                     ),
                     style = MaterialTheme.typography.bodyMedium,
