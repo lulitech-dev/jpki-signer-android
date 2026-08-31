@@ -146,6 +146,61 @@ class FakeCardTest {
         assertEquals(1, JpkiSession(FakeCard(derFile(4), retryStatus = 0x63C1)).remainingAttempts(JpkiKey.DIGITAL_SIGNATURE))
     }
 
+    /**
+     * A blocked PIN is its own answer, not a count of zero.
+     *
+     * `63 C0` also parses as "zero attempts left", and the caller then refused on
+     * its own floor and told the user "signing was stopped so a mistyped PIN
+     * cannot use them up" -- about attempts that were already gone, and without
+     * naming the municipal window that is the only way back. `69 83` says the
+     * same thing outright and used to fall through to a generic "the card did not
+     * accept a command".
+     */
+    @Test
+    fun `a blocked pin is named as blocked when the counter is read`() {
+        for (status in listOf(0x63C0, 0x6983)) {
+            val thrown = assertThrows(CardException::class.java) {
+                JpkiSession(FakeCard(derFile(4), retryStatus = status))
+                    .remainingAttempts(JpkiKey.DIGITAL_SIGNATURE)
+            }
+            assertEquals("SW %04X".format(status), CardProblem.PinBlocked, thrown.problem)
+        }
+    }
+
+    /**
+     * The problem names the step as a value, not as English prose.
+     *
+     * `:app` formats this into a translated sentence, and it used to be handed the
+     * developer-facing command name to put there -- so a Japanese-language app
+     * showed "COMPUTE DIGITAL SIGNATURE" inside its own wording. That name is
+     * still on the exception's message, which is where developer-facing text
+     * belongs.
+     */
+    @Test
+    fun `a failed command names the step, not an english command name`() {
+        val card = object : ApduTransceiver {
+            override fun transceive(command: ByteArray): ByteArray =
+                if ((command[1].toInt() and 0xFF) == 0xA4) {
+                    byteArrayOf(0x90.toByte(), 0x00)
+                } else {
+                    byteArrayOf(0x6A, 0x86.toByte())
+                }
+        }
+
+        val thrown = assertThrows(CardException::class.java) {
+            JpkiSession(card).signDigestInfo(JpkiKey.DIGITAL_SIGNATURE, ByteArray(51))
+        }
+
+        assertEquals(
+            CardProblem.CommandFailed(CardCommand.ComputeSignature, StatusWord(0x6A86)),
+            thrown.problem,
+        )
+        assertTrue(
+            "the developer-facing name belongs on the message: ${thrown.message}",
+            thrown.message.orEmpty().contains("COMPUTE DIGITAL SIGNATURE"),
+        )
+    }
+
     /** Reading the retry counter must never send PIN data. */
     @Test
     fun `retry counter query carries no data`() {

@@ -321,6 +321,12 @@ did not intend:
   to the form rather than straight to a card — retyping the PIN is the
   confirmation, on the one attempt whose loss cannot be undone at home. It lowers
   our floor, never the card's: a counter already at zero is refused either way.
+- **A blocked PIN is not a small count.** Both `63 C0` and `69 83` mean the card
+  is blocked, and `JpkiSession.remainingAttempts` says so rather than answering
+  zero. Reporting it as `TooFewAttempts(0)` put "signing was stopped so a
+  mistyped PIN cannot use them up" on screen — about attempts that were already
+  gone, with no mention of the municipal window, and no button, because there was
+  nothing left to override. The refusal was right; the sentence was not.
 - **Never state a remaining count we did not get from the card.**
   `SignFailure.remainingAttempts` is null on every path that did not establish it.
 - **The PIN is a `CharArray` and is wiped** — including the encoded copy and the

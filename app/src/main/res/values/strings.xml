@@ -78,8 +78,20 @@
     <string name="card_error_verify_unknown">確認中にカードとの通信が切れました。試行回数が減ったかどうかは分かりません。もう一度かざして残り回数を確認してください。</string>
     <string name="card_error_not_jpki_card">マイナンバーカードではないか、証明書アプリケーションを開けませんでした。カードを確認してもう一度お試しください。</string>
     <string name="card_error_lost_contact">カードとの通信が切れました。カードを動かさないようにして、もう一度お試しください。</string>
-    <string name="card_error_command_failed">カードとのやりとりに失敗しました（%1$s）。</string>
-    <string name="card_error_unreadable">カードの %1$s を読み取れませんでした。</string>
+    <!--
+         %1$s is one of the card_step_* names below: the step the card refused, as
+         a translated noun phrase. It used to be the developer-facing English name
+         of the APDU, formatted straight into this Japanese sentence.
+    -->
+    <string name="card_error_command_failed">カードが「%1$s」を受け付けませんでした。もう一度かざしてお試しください。</string>
+    <string name="card_error_unreadable">「%1$s」でカードから予期しない応答がありました。</string>
+    <string name="card_step_select_pin_ef">署名用パスワードの確認準備</string>
+    <string name="card_step_select_key_ef">署名鍵の選択</string>
+    <string name="card_step_select_certificate_ef">電子証明書の選択</string>
+    <string name="card_step_read_retry_counter">残り回数の読み取り</string>
+    <string name="card_step_verify_pin">署名用パスワードの確認</string>
+    <string name="card_step_read_certificate">電子証明書の読み取り</string>
+    <string name="card_step_compute_signature">署名の作成</string>
     <string name="card_error_malformed_response">カードからの応答を読み取れませんでした。カードを動かさないようにして、もう一度お試しください。</string>
     <string name="sign_error_document_missing">この書類は見つかりませんでした。</string>
     <plurals name="sign_error_too_few_attempts">

@@ -17,7 +17,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -130,9 +129,20 @@ class LastAttemptTest {
         assertEquals(SignFailure.Card(CardProblem.PinBlocked), failure)
     }
 
-    /** The override lowers our floor, not the card's. Zero is still zero. */
+    /**
+     * The override lowers our floor, not the card's. Zero is still zero -- and an
+     * exhausted card is *blocked*, which is a different sentence from a small
+     * count and the only one the user can act on.
+     *
+     * It used to be reported as `TooFewAttempts(0)`, so the screen read "only 0
+     * attempts are left on this card; signing was stopped so a mistyped PIN
+     * cannot use them up" -- said about attempts that were already gone, with no
+     * mention of the municipal window that is the only way back, and no button,
+     * because there was nothing left to override. The refusal was right; the
+     * thing it said was not.
+     */
     @Test
-    fun `an exhausted card is refused even with the override taken`() {
+    fun `an exhausted card is named as blocked, not as one attempt short`() {
         viewModel.openSigningSheet(documentId)
         runWith(CountingCard(remaining = 0))
         viewModel.useLastAttempt()
@@ -140,13 +150,40 @@ class LastAttemptTest {
         val card = CountingCard(remaining = 0)
         runWith(card)
 
+        assertEquals("still never asked to verify", 0, card.verifiesSent)
+        val failure = (viewModel.signing.value?.state as SigningState.Failed).failure
+        assertEquals(SignFailure.Card(CardProblem.PinBlocked), failure)
+        assertNull(
+            "a blocked card has no count worth stating",
+            failure.remainingAttempts,
+        )
+    }
+
+    /** The other status word a card uses to say the same thing. */
+    @Test
+    fun `a card that answers 6983 to the counter is blocked too`() {
+        viewModel.openSigningSheet(documentId)
+
+        val card = object : ApduTransceiver {
+            var verifiesSent = 0
+            override fun transceive(command: ByteArray): ByteArray {
+                val ins = command[1].toInt() and 0xFF
+                if (ins == 0x20 && command.size > 4) verifiesSent++
+                return when {
+                    ins == 0xA4 -> byteArrayOf(0x90.toByte(), 0x00)
+                    ins == 0x20 -> byteArrayOf(0x69, 0x83.toByte())
+                    else -> byteArrayOf(0x6A, 0x82.toByte())
+                }
+            }
+        }
+        viewModel.startSigning("ABC123".toCharArray(), SignParams())
+        viewModel.onCard(JpkiSession(card))
+
         assertEquals(0, card.verifiesSent)
         val failure = (viewModel.signing.value?.state as SigningState.Failed).failure
-        assertEquals(SignFailure.TooFewAttempts(remaining = 0), failure)
-        assertFalse(
-            "nothing left to override",
-            (failure as SignFailure.TooFewAttempts).canOverride,
-        )
+        // Not a generic "the card did not accept a command", which is what a
+        // 6983 on the counter read used to fall through to.
+        assertEquals(SignFailure.Card(CardProblem.PinBlocked), failure)
     }
 
     /**

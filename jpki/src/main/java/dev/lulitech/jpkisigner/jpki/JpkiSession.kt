@@ -1,5 +1,7 @@
 package dev.lulitech.jpkisigner.jpki
 
+import java.util.Locale
+
 /**
  * One conversation with the JPKI applet, over an already-connected card.
  *
@@ -38,16 +40,33 @@ class JpkiSession(private val io: ApduTransceiver) {
      */
     fun remainingAttempts(key: JpkiKey): Int {
         selectApplication()
-        send(Apdu.selectFile(key.pinEf)).requireSuccess("SELECT PIN EF")
-        val response = send(Apdu.readRetryCounter())
-        return response.statusWord.remainingAttempts
-            ?: if (response.statusWord.isSuccess) {
+        send(Apdu.selectFile(key.pinEf)).requireSuccess(CardCommand.SelectPinEf, "SELECT PIN EF")
+        val status = send(Apdu.readRetryCounter()).statusWord
+
+        // Before the count, because a blocked PIN is not a small count -- it is a
+        // different thing to say, and the only one the user can act on. Both
+        // 63 C0 and 69 83 mean blocked, and neither used to be recognised here:
+        // the first also parses as "zero attempts left", so the caller refused
+        // on the floor and the screen read "signing was stopped so a mistyped
+        // PIN cannot use them up" -- about attempts already gone, with no
+        // mention of the municipal window that is the only way back. The second
+        // fell through to a generic "the card did not accept a command".
+        if (status.isPinBlocked) {
+            throw CardException(
+                CardProblem.PinBlocked,
+                "PIN is blocked; it must be reset at a municipal window",
+                status,
+            )
+        }
+
+        return status.remainingAttempts
+            ?: if (status.isSuccess) {
                 key.maxAttempts
             } else {
                 throw CardException(
-                    CardProblem.CommandFailed("read retry counter", response.statusWord),
-                    "could not read retry counter: SW=${response.statusWord}",
-                    response.statusWord,
+                    CardProblem.CommandFailed(CardCommand.ReadRetryCounter, status),
+                    "could not read retry counter: SW=$status",
+                    status,
                 )
             }
     }
@@ -66,7 +85,7 @@ class JpkiSession(private val io: ApduTransceiver) {
         key.validatePin(pin)?.let { throw IllegalArgumentException("malformed PIN: $it") }
 
         selectApplication()
-        send(Apdu.selectFile(key.pinEf)).requireSuccess("SELECT PIN EF")
+        send(Apdu.selectFile(key.pinEf)).requireSuccess(CardCommand.SelectPinEf, "SELECT PIN EF")
 
         val encoded = key.encodePin(pin)
         // Built into a local so it can be wiped too. It embeds the PIN after its
@@ -110,7 +129,7 @@ class JpkiSession(private val io: ApduTransceiver) {
         val problem = when {
             response.statusWord.isPinBlocked -> CardProblem.PinBlocked
             remaining != null -> CardProblem.WrongPin(remaining)
-            else -> CardProblem.CommandFailed("PIN verification", response.statusWord)
+            else -> CardProblem.CommandFailed(CardCommand.VerifyPin, response.statusWord)
         }
         throw CardException(
             problem,
@@ -137,7 +156,9 @@ class JpkiSession(private val io: ApduTransceiver) {
             // status word alone would read that as "this card has no CA
             // certificate" -- quietly dropping it from a signature made on a card
             // we had no business talking to.
-            if (e.problem is CardProblem.CommandFailed &&
+            val problem = e.problem
+            if (problem is CardProblem.CommandFailed &&
+                problem.command == CardCommand.SelectCertificateEf &&
                 e.statusWord?.value == StatusWord.FILE_NOT_FOUND
             ) {
                 null
@@ -154,8 +175,12 @@ class JpkiSession(private val io: ApduTransceiver) {
      */
     fun signDigestInfo(key: JpkiKey, digestInfo: ByteArray): ByteArray {
         selectApplication()
-        send(Apdu.selectFile(key.keyEf)).requireSuccess("SELECT key EF")
-        return sendForData(Apdu.computeSignature(digestInfo), "COMPUTE DIGITAL SIGNATURE")
+        send(Apdu.selectFile(key.keyEf)).requireSuccess(CardCommand.SelectKeyEf, "SELECT key EF")
+        return sendForData(
+            Apdu.computeSignature(digestInfo),
+            CardCommand.ComputeSignature,
+            "COMPUTE DIGITAL SIGNATURE",
+        )
     }
 
     /**
@@ -166,13 +191,20 @@ class JpkiSession(private val io: ApduTransceiver) {
      */
     private fun readFile(fileId: Int): ByteArray {
         selectApplication()
-        send(Apdu.selectFile(fileId)).requireSuccess("SELECT EF %04X".format(fileId))
+        send(Apdu.selectFile(fileId)).requireSuccess(
+            CardCommand.SelectCertificateEf,
+            "SELECT EF %04X".format(Locale.ROOT, fileId),
+        )
 
-        val header = sendForData(Apdu.readBinary(0, HEADER_PROBE), "READ BINARY header")
+        val header = sendForData(
+            Apdu.readBinary(0, HEADER_PROBE),
+            CardCommand.ReadCertificate,
+            "READ BINARY header",
+        )
         val total = derTotalLength(header)
             ?: throw CardException(
-                CardProblem.Unreadable("EF %04X".format(fileId)),
-                "EF %04X is not a DER object of a readable size".format(fileId),
+                CardProblem.Unreadable(CardCommand.ReadCertificate),
+                "EF %04X is not a DER object of a readable size".format(Locale.ROOT, fileId),
             )
 
         val out = ByteArray(total)
@@ -181,11 +213,15 @@ class JpkiSession(private val io: ApduTransceiver) {
 
         while (read < total) {
             val want = minOf(CHUNK, total - read)
-            val chunk = sendForData(Apdu.readBinary(read, want), "READ BINARY at $read")
+            val chunk = sendForData(
+                Apdu.readBinary(read, want),
+                CardCommand.ReadCertificate,
+                "READ BINARY at $read",
+            )
             if (chunk.isEmpty()) {
                 throw CardException(
-                    CardProblem.Unreadable("EF %04X".format(fileId)),
-                    "short read at offset $read",
+                    CardProblem.Unreadable(CardCommand.ReadCertificate),
+                    "EF %04X: short read at offset %d".format(Locale.ROOT, fileId, read),
                 )
             }
             chunk.copyInto(out, read, 0, minOf(chunk.size, total - read))
@@ -209,9 +245,14 @@ class JpkiSession(private val io: ApduTransceiver) {
      * Deliberately not used by [verifyPin]: neither status word can follow a
      * VERIFY, and nothing near that command may reissue anything.
      *
-     * @param what developer-facing name of the command, for the failure it raises.
+     * @param step what the caller was doing, for the user to be told about.
+     * @param detail developer-facing name of the command, for the log message.
      */
-    private fun sendForData(command: ByteArray, what: String): ByteArray {
+    private fun sendForData(
+        command: ByteArray,
+        step: CardCommand,
+        detail: String = step.name,
+    ): ByteArray {
         var response = send(command)
 
         // 6C xx: reissue once, with the length the card just named. The Le is the
@@ -232,8 +273,8 @@ class JpkiSession(private val io: ApduTransceiver) {
             val waiting = status.bytesAvailable ?: break
             if (++rounds > MAX_GET_RESPONSE_ROUNDS) {
                 throw CardException(
-                    CardProblem.Unreadable(what),
-                    "$what: the card asked for more than $MAX_GET_RESPONSE_ROUNDS GET RESPONSEs",
+                    CardProblem.Unreadable(step),
+                    "$detail: the card asked for more than $MAX_GET_RESPONSE_ROUNDS GET RESPONSEs",
                 )
             }
             val next = send(Apdu.getResponse(waiting))
@@ -243,8 +284,8 @@ class JpkiSession(private val io: ApduTransceiver) {
 
         if (!status.isSuccess) {
             throw CardException(
-                CardProblem.CommandFailed(what, status),
-                "$what failed: SW=$status",
+                CardProblem.CommandFailed(step, status),
+                "$detail failed: SW=$status",
                 status,
             )
         }

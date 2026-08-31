@@ -52,8 +52,20 @@
     <string name="card_error_verify_unknown">Contact with the card was lost while checking the PIN. Whether the attempt was counted is unknown — hold the card again to read the remaining attempts.</string>
     <string name="card_error_not_jpki_card">This is not a My Number Card, or its certificate application could not be opened. Check the card and try again.</string>
     <string name="card_error_lost_contact">Contact with the card was lost. Hold it still against the phone and try again.</string>
-    <string name="card_error_command_failed">The card did not accept a command (%1$s).</string>
-    <string name="card_error_unreadable">%1$s could not be read from the card.</string>
+    <!--
+         %1$s is one of the card_step_* names below: the step the card refused, as
+         a translated phrase. It used to be the developer-facing English name of
+         the APDU, formatted straight into the sentence in every language.
+    -->
+    <string name="card_error_command_failed">The card refused this step: %1$s. Hold the card again and try once more.</string>
+    <string name="card_error_unreadable">The card returned something unexpected while %1$s.</string>
+    <string name="card_step_select_pin_ef">preparing to check the PIN</string>
+    <string name="card_step_select_key_ef">selecting the signing key</string>
+    <string name="card_step_select_certificate_ef">selecting the certificate</string>
+    <string name="card_step_read_retry_counter">reading the remaining attempts</string>
+    <string name="card_step_verify_pin">checking the PIN</string>
+    <string name="card_step_read_certificate">reading the certificate</string>
+    <string name="card_step_compute_signature">creating the signature</string>
     <string name="card_error_malformed_response">The card\'s reply could not be read. Hold it still against the phone and try again.</string>
     <string name="sign_error_document_missing">This document no longer exists.</string>
     <plurals name="sign_error_too_few_attempts">

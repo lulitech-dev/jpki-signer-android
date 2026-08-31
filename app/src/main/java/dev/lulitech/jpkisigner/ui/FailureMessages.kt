@@ -5,6 +5,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import dev.lulitech.jpkisigner.R
 import dev.lulitech.jpkisigner.data.SignFailure
+import dev.lulitech.jpkisigner.jpki.CardCommand
 import dev.lulitech.jpkisigner.jpki.CardProblem
 import dev.lulitech.jpkisigner.jpki.JpkiKey
 import dev.lulitech.jpkisigner.jpki.PinProblem
@@ -48,9 +49,31 @@ fun messageFor(problem: CardProblem): String = when (problem) {
         } ?: stringResource(R.string.card_error_wrong_pin_unknown)
     CardProblem.MalformedResponse -> stringResource(R.string.card_error_malformed_response)
     is CardProblem.CommandFailed ->
-        stringResource(R.string.card_error_command_failed, problem.what)
-    is CardProblem.Unreadable -> stringResource(R.string.card_error_unreadable, problem.what)
+        stringResource(R.string.card_error_command_failed, nameFor(problem.command))
+    is CardProblem.Unreadable ->
+        stringResource(R.string.card_error_unreadable, nameFor(problem.command))
 }
+
+/**
+ * The step of a card conversation, named in the user's language.
+ *
+ * [CardCommand] replaced the free-form English these two messages used to
+ * interpolate -- `"read retry counter"`, `"COMPUTE DIGITAL SIGNATURE"` -- which
+ * arrived verbatim inside an otherwise Japanese sentence. The developer-facing
+ * name is still on `CardException.message`, where it belongs.
+ */
+@Composable
+private fun nameFor(command: CardCommand): String = stringResource(
+    when (command) {
+        CardCommand.SelectPinEf -> R.string.card_step_select_pin_ef
+        CardCommand.SelectKeyEf -> R.string.card_step_select_key_ef
+        CardCommand.SelectCertificateEf -> R.string.card_step_select_certificate_ef
+        CardCommand.ReadRetryCounter -> R.string.card_step_read_retry_counter
+        CardCommand.VerifyPin -> R.string.card_step_verify_pin
+        CardCommand.ReadCertificate -> R.string.card_step_read_certificate
+        CardCommand.ComputeSignature -> R.string.card_step_compute_signature
+    },
+)
 
 /**
  * Why a file cannot be signed.

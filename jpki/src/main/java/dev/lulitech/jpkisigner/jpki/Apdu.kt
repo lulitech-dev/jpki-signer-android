@@ -1,5 +1,7 @@
 package dev.lulitech.jpkisigner.jpki
 
+import java.util.Locale
+
 /** Raw APDU exchange. Implemented over IsoDep on device, and by fakes in tests. */
 interface ApduTransceiver {
     /** Sends a command APDU and returns the full response, status word included. */
@@ -40,7 +42,7 @@ value class StatusWord(val value: Int) {
     val expectedLength: Int? get() =
         if (value and 0xFF00 == WRONG_LE) (value and 0xFF).let { if (it == 0) 0x100 else it } else null
 
-    override fun toString(): String = "%04X".format(value)
+    override fun toString(): String = "%04X".format(Locale.ROOT, value)
 
     companion object {
         const val SUCCESS = 0x9000
@@ -55,6 +57,48 @@ value class StatusWord(val value: Int) {
         /** `6C xx`: the low byte is the Le the card will accept. */
         const val WRONG_LE = 0x6C00
     }
+}
+
+/**
+ * The step of a card conversation something went wrong in.
+ *
+ * An enum, rather than the free-form English it replaced. [CardProblem] exists so
+ * this module -- which has no resources and no locale -- reports what went wrong
+ * as *data*, for `:app` to resolve against `strings.xml`. But the two problems
+ * that name a command carried that name as a developer-facing string, and `:app`
+ * formatted it straight into the translated sentence: a Japanese-language app
+ * told its user "カードがこの処理を受け付けませんでした (read retry counter)".
+ * The detail is not lost -- it stays in [CardException.message], which is where
+ * developer-facing text belongs.
+ */
+enum class CardCommand {
+    /**
+     * SELECT of the EF holding the PIN, before reading its counter or verifying.
+     *
+     * There is deliberately no entry for the SELECT of the 公的個人認証AP itself:
+     * a card that refuses that one is answered with [CardProblem.NotJpkiCard],
+     * which is a thing the user can act on, so no [CardProblem.CommandFailed]
+     * ever names it.
+     */
+    SelectPinEf,
+
+    /** SELECT of the EF holding the private key. */
+    SelectKeyEf,
+
+    /** SELECT of an EF holding a certificate. */
+    SelectCertificateEf,
+
+    /** The empty VERIFY that reads the retry counter without spending an attempt. */
+    ReadRetryCounter,
+
+    /** The one real VERIFY. */
+    VerifyPin,
+
+    /** READ BINARY over a certificate EF. */
+    ReadCertificate,
+
+    /** COMPUTE DIGITAL SIGNATURE. */
+    ComputeSignature,
 }
 
 /**
@@ -94,7 +138,7 @@ sealed interface CardProblem {
     data object NotJpkiCard : CardProblem
 
     /** A command answered with a status word we cannot act on. */
-    data class CommandFailed(val what: String, val statusWord: StatusWord?) : CardProblem
+    data class CommandFailed(val command: CardCommand, val statusWord: StatusWord?) : CardProblem
 
     /**
      * The card answered with something that is not a response APDU at all: fewer
@@ -109,8 +153,8 @@ sealed interface CardProblem {
      */
     data object MalformedResponse : CardProblem
 
-    /** A file on the card did not hold what it should. */
-    data class Unreadable(val what: String) : CardProblem
+    /** The card answered [command] with something we could not make sense of. */
+    data class Unreadable(val command: CardCommand) : CardProblem
 }
 
 /**
@@ -141,11 +185,15 @@ class Response(private val raw: ByteArray) {
 
     val data: ByteArray get() = raw.copyOfRange(0, raw.size - 2)
 
-    fun requireSuccess(what: String): Response {
+    /**
+     * @param detail developer-facing name of the command, for the log message
+     *   only. [command] is what reaches the user, through a translation.
+     */
+    fun requireSuccess(command: CardCommand, detail: String = command.name): Response {
         if (!statusWord.isSuccess) {
             throw CardException(
-                CardProblem.CommandFailed(what, statusWord),
-                "$what failed: SW=$statusWord",
+                CardProblem.CommandFailed(command, statusWord),
+                "$detail failed: SW=$statusWord",
                 statusWord,
             )
         }
