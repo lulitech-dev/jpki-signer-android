@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -70,7 +71,7 @@ class DetailReadabilityTest {
         runTest(dispatcher) {
             val id = store.import("broken.pdf", "not a PDF at all".toByteArray().inputStream())
 
-                viewModel.open(id).join()
+            viewModel.open(id).join()
 
             val detail = viewModel.detail.value!!
             assertTrue(detail.rows.isEmpty())
@@ -79,5 +80,34 @@ class DetailReadabilityTest {
                 detail.unreadable,
             )
             assertEquals("broken.pdf", detail.displayName)
+        }
+
+    /**
+     * The same distinction one screen up.
+     *
+     * The library row shows a count and nothing else, and `SignatureInspector.count`
+     * used to answer 0 for a file it could not parse -- so a damaged document sat
+     * in the list rendered exactly like a plainly unsigned one, with no hint that
+     * opening it would say something different.
+     */
+    @Test
+    fun `a document that will not parse has no signature count, not a count of zero`() =
+        runTest(dispatcher) {
+            store.import("contract.pdf", MINIMAL_PDF.inputStream())
+            store.import("broken.pdf", "not a PDF at all".toByteArray().inputStream())
+
+            viewModel.refresh().join()
+
+            val byName = viewModel.documents.value.associateBy { it.displayName }
+            assertEquals(2, byName.size)
+            assertEquals(
+                "a readable, unsigned document really has none",
+                0,
+                byName.getValue("contract.pdf").signatureCount,
+            )
+            assertNull(
+                "a file we could not read has no count to report",
+                byName.getValue("broken.pdf").signatureCount,
+            )
         }
 }

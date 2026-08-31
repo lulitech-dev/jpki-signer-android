@@ -2,6 +2,7 @@ package dev.lulitech.jpkisigner.ui
 
 import androidx.annotation.RawRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,12 +11,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -70,7 +73,18 @@ fun NoticesScreen(modifier: Modifier = Modifier) {
     val texts by produceState<List<String>?>(null, notices) {
         value = withContext(Dispatchers.IO) { notices.map { context.readRaw(it.textRes) } }
     }
-    val loaded = texts ?: return
+    val loaded = texts
+
+    if (loaded == null) {
+        // Something, rather than nothing. Returning early left the screen blank
+        // under its own toolbar until the read finished, which reads as a broken
+        // screen rather than a slow one -- and this is the screen that exists to
+        // discharge a licence obligation, so it must not look like it failed.
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),

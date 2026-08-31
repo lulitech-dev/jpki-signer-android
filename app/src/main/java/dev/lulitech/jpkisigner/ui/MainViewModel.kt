@@ -41,7 +41,15 @@ sealed interface ImportError {
 data class DocumentUi(
     val id: String,
     val displayName: String,
-    val signatureCount: Int,
+    /**
+     * How many signatures the file carries, or null when it could not be read.
+     *
+     * Null is not 0. "No signatures" is a claim about the document, and a file we
+     * failed to parse is not one we can make it about -- it used to borrow the
+     * sentence and sit in the library looking plainly unsigned. Same distinction
+     * [DocumentDetailUi.unreadable] draws one screen down.
+     */
+    val signatureCount: Int?,
 )
 
 /** Screen 2's view of one document. */
@@ -148,6 +156,7 @@ class MainViewModel(
      * Its PIN would otherwise outlive every screen that could have used it.
      */
     override fun onCleared() {
+        super.onCleared()
         discardPendingRun()
     }
 
@@ -159,9 +168,17 @@ class MainViewModel(
         refresh()
     }
 
+    /**
+     * Re-reads the library.
+     *
+     * A listing that throws leaves the previous one in place rather than replacing
+     * it with an empty list. "You have no documents" is a claim too, and it sits
+     * next to a hint explaining how to add one -- which is a bad thing to show
+     * someone whose documents are all still there.
+     */
     fun refresh() = viewModelScope.launch {
-        _documents.value = withContext(io) {
-            orElse(emptyList<DocumentUi>()) {
+        val listed = withContext(io) {
+            orElse(null) {
                 store.list().map { document ->
                     DocumentUi(
                         id = document.id,
@@ -172,12 +189,15 @@ class MainViewModel(
                         // A count only. Going through the inspector for it meant a
                         // full in-memory read and one RSA verification per
                         // signature, for every document, every time the list was
-                        // refreshed -- to render a number on a row.
+                        // refreshed -- to render a number on a row. Null where the
+                        // file would not parse, which the row says rather than
+                        // rendering as "no signatures".
                         signatureCount = SignatureInspector.count(document.head),
                     )
                 }
             }
         }
+        if (listed != null) _documents.value = listed
     }
 
     /**

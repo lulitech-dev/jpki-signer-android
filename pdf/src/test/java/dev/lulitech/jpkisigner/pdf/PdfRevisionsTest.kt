@@ -255,6 +255,70 @@ class PdfRevisionsTest {
         )
     }
 
+    /**
+     * A `startxref` offset that addresses bytes *above* its own marker is not this
+     * revision's trailer.
+     *
+     * A revision writes its cross-reference section before the `startxref` naming
+     * it, so a genuine offset always points backwards. Bounding it by the file's
+     * length instead lets a forward one through, and the shape that produces one is
+     * exactly what [closesARevision] exists to reject: an embedded PDF attachment,
+     * whose complete trailer is carried verbatim inside the outer document and
+     * whose offset is relative to the inner file. Read against the outer one it can
+     * land anywhere later -- and since candidates are tried largest offset first, a
+     * marker qualified on that basis is *preferred* over the real boundary below it.
+     *
+     * Forged here to point at the signed increment's first object header, which is
+     * a real `N M obj` and would satisfy the check on its own -- only in the wrong
+     * direction.
+     */
+    @Test
+    fun `a startxref addressing bytes above its own marker is not a boundary`() {
+        val original = blank("original.pdf")
+        val signed = temp.newFile("signed.pdf")
+        PdfSigner(SoftwareSignatureProvider()).sign(original, signed)
+
+        assertEquals(
+            "control: intact, the original revision is the boundary",
+            original.length(),
+            PdfRevisions.truncationLengthFor(signed, 0),
+        )
+
+        val bytes = signed.readBytes()
+
+        // The increment's first object header, just above the original revision's
+        // marker: a valid cross-reference-section start, in the wrong place.
+        val eof = "%%EOF".toByteArray(Charsets.ISO_8859_1)
+        var target = indexOfBytes(bytes, eof, 0) + eof.size
+        while (bytes[target].toInt().toChar().isWhitespace()) target++
+
+        // Rewritten in place, so the file's length and every other byte are
+        // untouched and the document still opens through the increment's own /Prev.
+        val trailer = "startxref".toByteArray(Charsets.ISO_8859_1)
+        var at = indexOfBytes(bytes, trailer, 0) + trailer.size
+        while (bytes[at].toInt().toChar().isWhitespace()) at++
+        val start = at
+        while (bytes[at].toInt().toChar().isDigit()) at++
+        val forged = target.toString()
+        assertEquals(
+            "the forged offset must fit the field it replaces, or no byte may move",
+            at - start,
+            forged.length,
+        )
+        forged.forEachIndexed { i, c -> bytes[start + i] = c.code.toByte() }
+        val defaced = temp.newFile("defaced.pdf").apply { writeBytes(bytes) }
+
+        assertEquals(
+            "the document must still be readable, or this proves nothing",
+            1,
+            SignatureInspector.inspect(defaced).size,
+        )
+        assertNull(
+            "an offset above its own marker is not this revision's",
+            PdfRevisions.truncationLengthFor(defaced, 0),
+        )
+    }
+
     private fun indexOfBytes(haystack: ByteArray, needle: ByteArray, from: Int): Int =
         (from..haystack.size - needle.size).first { i ->
             needle.indices.all { haystack[i + it] == needle[it] }
@@ -383,12 +447,19 @@ class CoversWholeDocumentTest {
         }
     }
 
-    /** A file that will not parse has no count to show, and must not throw for one. */
+    /**
+     * A file that will not parse has no count to show, and must not throw for one
+     * -- nor claim to have counted zero.
+     *
+     * "No signatures" is a claim about the document, and a file we could not read
+     * is not one we can make it about. Reporting 0 put a damaged document in the
+     * library looking exactly like a plainly unsigned one.
+     */
     @Test
-    fun `counting a damaged file reports none rather than throwing`() {
+    fun `counting a damaged file gives no verdict rather than zero`() {
         val junk = temp.newFile("junk.pdf")
         junk.writeBytes("not a pdf at all".toByteArray())
 
-        assertEquals(0, SignatureInspector.count(junk))
+        assertNull(SignatureInspector.count(junk))
     }
 }

@@ -222,16 +222,29 @@ object PdfRevisions {
 
         var offset = 0L
         for (i in start until end) offset = offset * 10 + ((bytes[i].toInt() and 0xFF) - ZERO)
-        return startsCrossReferenceSection(bytes, offset)
+        // Bounded by the keyword's own position, not by the file's length. A
+        // revision writes its cross-reference section *before* the `startxref`
+        // naming it, so an offset at or past the keyword cannot be this
+        // revision's -- and that is exactly the shape the check exists to
+        // reject. An embedded PDF attachment's offset is relative to the inner
+        // file, so measured against the outer one it can land anywhere later,
+        // the attachment's own body included, and pass. Candidates are tried
+        // largest offset first, so such a false boundary would be preferred over
+        // the real one below it, leaving [validate] as the only guard left.
+        return startsCrossReferenceSection(bytes, offset, below = at)
     }
 
     /**
      * Whether [offset] addresses the start of a cross-reference section: the
      * `xref` keyword of a table, or the `N M obj` header of the object holding a
      * cross-reference stream.
+     *
+     * @param below one past the last byte [offset] may address -- the position of
+     *   the `startxref` that named it, since a revision's cross-reference section
+     *   always precedes the keyword pointing at it.
      */
-    private fun startsCrossReferenceSection(bytes: ByteArray, offset: Long): Boolean {
-        if (offset <= 0 || offset >= bytes.size) return false
+    private fun startsCrossReferenceSection(bytes: ByteArray, offset: Long, below: Int): Boolean {
+        if (offset <= 0 || offset >= below) return false
         var i = offset.toInt()
         if (matches(bytes, i, XREF)) return true
 

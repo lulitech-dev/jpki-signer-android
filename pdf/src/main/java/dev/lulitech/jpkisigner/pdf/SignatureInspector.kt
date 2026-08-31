@@ -83,12 +83,19 @@ object SignatureInspector {
      * every document, on every refresh. This reads through PDFBox's own buffered
      * file access instead, so the whole document is never resident.
      *
-     * @return 0 for a file that cannot be parsed. Unlike [inspect] this does not
-     *   throw: there is no count to show either way, and the caller is a list row.
+     * @return null for a file that cannot be parsed -- **not** 0. "This document
+     *   has no signatures" is a claim about the document, and it can only be made
+     *   about one we actually read; a file that would not parse used to borrow
+     *   that sentence and appear in the library as a plainly unsigned document.
+     *   Same distinction [SignatureInfo] draws between MISMATCH and UNCHECKED, and
+     *   the one `DocumentDetailUi.unreadable` draws one screen down.
+     *
+     * Unlike [inspect] this does not throw: the caller is a list row, and it has
+     * somewhere to put the difference.
      */
-    fun count(file: File): Int = runCatching {
+    fun count(file: File): Int? = runCatching {
         PDDocument.load(file).use { it.signatureDictionaries.size }
-    }.getOrDefault(0)
+    }.getOrNull()
 
     /**
      * Reads every signature present in [file], oldest first.

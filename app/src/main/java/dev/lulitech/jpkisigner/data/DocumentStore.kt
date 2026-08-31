@@ -30,7 +30,15 @@ class DocumentStore(private val root: File) {
     /** Copies [source] in and returns the new document id. */
     fun import(displayName: String, source: InputStream): String {
         val id = newId()
-        val dir = File(root, id).apply { mkdirs() }
+        val dir = File(root, id)
+        // Checked, not assumed. `mkdirs` returns false when the directory is
+        // already there, which for an id is another document -- and this would go
+        // on to rename its content file out from under it. The id is 13 digits of
+        // clock plus 28 bits of randomness, so it takes a collision inside one
+        // millisecond, but the cost of not looking is another document's bytes.
+        // Failing here is safe: the caller reports the import as failed and
+        // nothing has been written.
+        check(dir.mkdirs()) { "could not create a directory for $id" }
         try {
             // Write to a temp name first, so a failure mid-copy cannot leave a
             // half-imported document that looks valid.
@@ -105,6 +113,12 @@ class DocumentStore(private val root: File) {
     }
 
 
+    /**
+     * Sortable and unique: 13 digits of epoch milliseconds, zero-padded so a plain
+     * string comparison is chronological, then 28 bits of randomness to separate
+     * two imports landing in the same millisecond. [import] checks the directory
+     * really was new rather than trusting that.
+     */
     private fun newId(): String =
         "%013d-%08x".format(System.currentTimeMillis(), (Math.random() * 0xFFFFFFFL).toInt())
 

@@ -56,12 +56,12 @@ class NfcCardReader(private val activity: Activity) {
     /**
      * Opens a session on [tag] and hands it to [onCard].
      *
-     * Nothing may throw out of here. This runs on an NFC binder thread, where an
-     * escaping exception reaches no handler that can report it, and
-     * `IsoDep.connect` throws `IOException` for the most ordinary thing a user
-     * does -- holding the card slightly off the antenna. It is a checked
-     * exception, so Kotlin let it straight out, past every guard the signing run
-     * puts around itself.
+     * Nothing throws out of here, and that is enforced below rather than left to
+     * the callers. This runs on an NFC binder thread, where an escaping exception
+     * reaches no handler that can report it, and `IsoDep.connect` throws
+     * `IOException` for the most ordinary thing a user does -- holding the card
+     * slightly off the antenna. It is a checked exception, so Kotlin let it
+     * straight out, past every guard the signing run puts around itself.
      */
     private fun handle(
         tag: Tag,
@@ -84,6 +84,20 @@ class NfcCardReader(private val activity: Activity) {
 
         try {
             onCard(JpkiSession(IsoDepTransceiver(isoDep)))
+        } catch (t: Throwable) {
+            // Nothing is reported from here, because by this point it already has
+            // been: reporting belongs to [onCard], and both callers do it from a
+            // `finally` that has already run. What is left is the promise this
+            // function's documentation makes and could not keep -- the callback
+            // was wrapped in `finally` alone, so the guard against dying on a
+            // binder thread lived in :app's own catch rather than at the boundary
+            // that claims it. The one in :app catches Throwable; the bring-up
+            // screen catches Exception, so an Error out of it reached exactly the
+            // thread with no handler.
+            //
+            // Deliberately not routed to [onUnusable]: that says a tag could not
+            // be turned into a session, which is not what happened, and the armed
+            // run is already gone by now anyway.
         } finally {
             runCatching { isoDep.close() }
         }

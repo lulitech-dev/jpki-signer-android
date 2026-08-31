@@ -102,18 +102,28 @@ private fun DocumentCard(document: DocumentUi) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(document.displayName, style = MaterialTheme.typography.titleMedium)
+            // Three cases, not two. A count of zero is a finding about the
+            // document; a file that would not parse has no finding to report and
+            // must not borrow "no signatures", which is what it used to do -- a
+            // damaged document sat here looking plainly unsigned. Coloured as an
+            // error because, unlike the count, it is something to act on.
+            val count = document.signatureCount
             Text(
-                text = if (document.signatureCount == 0) {
-                    stringResource(R.string.documents_no_signature)
-                } else {
-                    pluralStringResource(
+                text = when {
+                    count == null -> stringResource(R.string.documents_unreadable)
+                    count == 0 -> stringResource(R.string.documents_no_signature)
+                    else -> pluralStringResource(
                         R.plurals.documents_signature_count,
-                        document.signatureCount,
-                        document.signatureCount,
+                        count,
+                        count,
                     )
                 },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (count == null) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
         }
     }

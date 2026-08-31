@@ -39,7 +39,9 @@ object FileNames {
      */
     fun safe(displayName: String): String {
         val cleaned = displayName
-            .map { if (it == '/' || it == '\\' || it == 0.toChar() || it < ' ') '_' else it }
+            // `it < ' '` covers NUL and every other control character; only the
+            // separators need naming.
+            .map { if (it == '/' || it == '\\' || it < ' ') '_' else it }
             .joinToString("")
             .trim()
             .trimStart('.')

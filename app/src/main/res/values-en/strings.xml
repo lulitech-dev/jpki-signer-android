@@ -8,6 +8,7 @@
         <item quantity="other">%1$d signatures</item>
     </plurals>
     <string name="documents_no_signature">Not signed</string>
+    <string name="documents_unreadable">Could not be read</string>
     <string name="documents_delete">Delete</string>
     <string name="documents_delete_title">Delete this document?</string>
     <string name="documents_delete_body">\"%1$s\" will be removed from this app. This cannot be undone.</string>
