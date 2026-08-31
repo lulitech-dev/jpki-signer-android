@@ -9,6 +9,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.util.Locale
 
 class DocumentStoreTest {
 
@@ -24,6 +25,32 @@ class DocumentStoreTest {
 
     private fun import(name: String, content: ByteArray) =
         store.import(name, content.inputStream())
+
+    /**
+     * The id is the library's sort key, compared as a plain string -- so it has
+     * to be plain digits, whatever numbering system the *device* is set to.
+     *
+     * `%d` renders in the default locale's numbering system, and the app's own
+     * language has nothing to do with what that is: an English-language app on a
+     * phone set to ar-EG produced ids in Arabic-Indic digits. Ordering then held
+     * only until the locale changed, at which point ids from two numbering
+     * systems sat in one library and sorted by code point -- every older document
+     * landing on one side of every newer one, silently.
+     */
+    @Test
+    fun `ids are plain digits whatever the device locale is`() {
+        val original = Locale.getDefault()
+        try {
+            val shape = Regex("""\d{13}-[0-9a-f]{8}""")
+            for (tag in listOf("en-US", "ja-JP", "ar-EG", "fa-IR", "hi-IN-u-nu-deva")) {
+                Locale.setDefault(Locale.forLanguageTag(tag))
+                val id = import("contract.pdf", "hello".toByteArray())
+                assertTrue("id under $tag was \"$id\"", shape.matches(id))
+            }
+        } finally {
+            Locale.setDefault(original)
+        }
+    }
 
     @Test
     fun `imports and lists documents`() {

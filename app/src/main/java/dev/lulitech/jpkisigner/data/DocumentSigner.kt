@@ -12,6 +12,7 @@ import dev.lulitech.jpkisigner.pdf.PdfSigner
 import dev.lulitech.jpkisigner.pdf.PdfValidator
 import dev.lulitech.jpkisigner.pdf.SignParams
 import java.io.File
+import java.io.FileInputStream
 import java.io.IOException
 
 /**
@@ -200,6 +201,12 @@ class DocumentSigner(private val store: DocumentStore) {
         try {
             PdfSigner(CardSignatureProvider(session, key)).sign(head, staging, params)
             check(staging.length() > prefixLength) { "signed output is not larger than the input" }
+            // Flushed to the disk itself before the rename below. A rename is
+            // ordered against the file's metadata but not against its contents,
+            // so a power loss just after one can leave the document's name over
+            // blocks that were never written -- and the rename is what replaces
+            // the user's only copy.
+            FileInputStream(staging).use { it.fd.sync() }
 
             // One rename, and no fallback. rename(2) replaces the destination
             // atomically within a directory, so either the signed file becomes

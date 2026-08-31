@@ -1,7 +1,9 @@
 package dev.lulitech.jpkisigner.data
 
 import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
+import java.util.Locale
 
 /**
  * A PDF held by the app.
@@ -43,7 +45,16 @@ class DocumentStore(private val root: File) {
             // Write to a temp name first, so a failure mid-copy cannot leave a
             // half-imported document that looks valid.
             val staging = File(dir, STAGING)
-            staging.outputStream().use { out -> source.copyTo(out) }
+            // Flushed to the disk itself, not just out of our buffers, before the
+            // rename that publishes it. A rename is ordered against the file's
+            // metadata but not against its contents, so a power loss just after
+            // one can leave the name in place over blocks that were never
+            // written -- an entry in the library that opens as a damaged
+            // document.
+            FileOutputStream(staging).use { out ->
+                source.copyTo(out)
+                out.fd.sync()
+            }
             check(staging.renameTo(File(dir, FileNames.safe(displayName)))) {
                 "could not finalise import of $id"
             }
@@ -118,9 +129,19 @@ class DocumentStore(private val root: File) {
      * string comparison is chronological, then 28 bits of randomness to separate
      * two imports landing in the same millisecond. [import] checks the directory
      * really was new rather than trusting that.
+     *
+     * Formatted against [Locale.ROOT], not the device's. `%d` renders in the
+     * default locale's numbering system, so on a phone set to ar-EG or fa-IR the
+     * id came out in Arabic-Indic digits -- and the ordering above is a *string*
+     * comparison, which silently stops being chronological the moment ids from
+     * two numbering systems sit in the same library. The app's own language has
+     * nothing to do with it: this is the device locale.
      */
-    private fun newId(): String =
-        "%013d-%08x".format(System.currentTimeMillis(), (Math.random() * 0xFFFFFFFL).toInt())
+    private fun newId(): String = "%013d-%08x".format(
+        Locale.ROOT,
+        System.currentTimeMillis(),
+        (Math.random() * 0xFFFFFFFL).toInt(),
+    )
 
     private companion object {
         const val STAGING = "staging.part"
