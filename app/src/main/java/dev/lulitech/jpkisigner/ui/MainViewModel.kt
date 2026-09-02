@@ -367,6 +367,13 @@ class MainViewModel(
             refresh()
             if (request != detailRequest.get()) return@launch
             _detail.value = loaded
+            // Cleared without ever being set, unlike [open]. Both are deliberate.
+            // Nothing is set because the indicator is only drawn over the library
+            // (see MainActivity), and a cascade delete happens with the detail
+            // screen open, where the rows sweeping off screen are the feedback.
+            // It is still cleared because whoever holds the newest request owns
+            // the spinner: an [open] this call superseded returns early and leaves
+            // it set, so the request that won has to put it down.
             _detailLoading.value = false
         }
     }
@@ -548,6 +555,14 @@ class MainViewModel(
         val signatures = bytes?.let { read { SignatureInspector.inspect(it) } }
         // Revision boundaries come from the PDF, so imported signatures are
         // handled exactly like ones this app made.
+        //
+        // This is the half that fails first on a large document -- it parses a
+        // prefix per candidate -- and it is also the only one that can fail *after*
+        // the signatures are already in hand, which is the state the two
+        // `document_partly_*` lines report. It reaches this `read` as a throw
+        // rather than as an empty list, so that state is now actually reachable;
+        // while PdfRevisions swallowed it, the rows arrived with every one of them
+        // marked unremovable and nothing explaining it.
         val truncationLengths = bytes?.let { read { PdfRevisions.truncationLengths(it) } }
         val failed = bytes == null || signatures == null || truncationLengths == null
         return DocumentDetailUi(

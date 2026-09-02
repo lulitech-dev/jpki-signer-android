@@ -143,17 +143,48 @@ offered no way to remove anything from it. `DocumentDetailUi.unreadable` keeps t
 two apart, because "this document has no signatures" is a claim, and it can only
 be made about a document we actually read.
 
+**A layer that cannot report a failed read makes that flag unreachable.** The
+distinction only survives if every layer under it keeps it. `PdfRevisions`
+swallowed both its parses — `revisionEnds` with `runCatching{}.getOrNull()` and
+`validate` with `getOrDefault(false)` — and answered `emptyList`, so the flag
+above could never be set: the rows arrived with every one of them marked not
+removable and nothing on screen saying why. The boundary pass now **throws**, and
+`emptyList` means "no signatures" and nothing else. `SignatureInspector.inspect`
+throws for the same reason; `SignatureInspector.count` answers null because its
+caller is a list row. What none of them may do is answer with a value that reads
+as a finding.
+
+This matters most for the *partial* case. The boundary pass parses a prefix per
+candidate, so it is the expensive half and the half that fails first — and the
+only one that can fail *after* the signatures are already in hand. That is the
+state `document_partly_unreadable` and `document_partly_too_large` exist to
+report, and it is reachable only because the failure now travels.
+
 **Nor is a document that did not fit a damaged one.** That is a third state, and
 `DocumentDetailUi.tooLarge` carries it: running out of memory is a limit of this
 app on this device, and saying "this document could not be read" about a
-perfectly sound PDF is the same unearned claim in the other direction. The
-headroom is real, not theoretical, which is why `PdfRevisions` proves a boundary
-through a bounded *view* of the bytes rather than `bytes.copyOf(length)` — that
-copy put a second, nearly complete copy of the user's file beside the one the
-caller was already holding, at the moment of checking the newest boundary.
+perfectly sound PDF is the same unearned claim in the other direction.
+`PdfRejection.TOO_LARGE` carries it at **import** too, which was the last place
+collapsing the two: the fallback there named every failure `UNREADABLE`, so a
+large but sound PDF was called damaged as it was rejected and deleted.
+
+The headroom is real, not theoretical, which is why `PdfRevisions` proves a
+boundary through a bounded *view* of the bytes rather than `bytes.copyOf(length)`
+— that copy put a second, nearly complete copy of the user's file beside the one
+the caller was already holding, at the moment of checking the newest boundary.
 `PrefixRead` is that view, and it is held to PDFBox's own reader operation for
 operation, including seeking past the end, because a boundary computed wrong
 deletes work.
+
+The inspector had to stop copying for the same reason, and it is the same array:
+`loadDetail` runs both passes back to back over one read of the file, so a copy
+in either one sets the ceiling for both. `PDSignature.getSignedContent` returns a
+fresh `byte[]` of the covered spans — for the newest signature, nearly the whole
+file — and `CMSProcessableByteArray` holds it for the length of the RSA
+verification. `SignatureInspector.CoveredBytes` streams those spans straight out
+of the array instead; BouncyCastle only ever writes the content into a digest, so
+nothing needed the copy. Bounds are checked there rather than trusted, because
+PDFBox's reader was what used to refuse a ByteRange leaving the file.
 
 **What the list is allowed to claim.** A signature list reads as a validity
 statement, so it shows only what an offline app can actually prove:

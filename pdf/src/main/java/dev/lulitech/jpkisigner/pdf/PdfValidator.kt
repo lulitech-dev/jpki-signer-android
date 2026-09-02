@@ -16,6 +16,20 @@ enum class PdfRejection {
     UNREADABLE,
 
     /**
+     * Sound, as far as anyone here can tell, but too large to parse on this
+     * device.
+     *
+     * Its own reason rather than [UNREADABLE], for the same purpose as
+     * `DocumentDetailUi.tooLarge` one screen down: running out of memory is a
+     * limit of this app, not a finding about the file, and "this document could
+     * not be read" told the owner of a perfectly good PDF that it was damaged --
+     * as it was rejected and deleted. DESIGN.md §3.3 asks for these two to stay
+     * apart wherever they are said, and import was the one place still collapsing
+     * them.
+     */
+    TOO_LARGE,
+
+    /**
      * Encrypted. Signing would have to rewrite or re-encrypt the content, which
      * breaks the append-only property the whole revision model depends on.
      */
@@ -67,8 +81,22 @@ object PdfValidator {
             // survives neither a rename upstream nor an obfuscated build, and
             // fails by quietly reclassifying every encrypted PDF as damaged.
             PdfRejection.ENCRYPTED
+        } catch (e: OutOfMemoryError) {
+            // Named, not swallowed into UNREADABLE. Parsing a whole user file
+            // whose size is not ours to bound makes this an expected outcome
+            // rather than a broken VM, and the caller's own fallback could not
+            // tell it apart from a damaged file -- so a large, sound document was
+            // rejected as unreadable and deleted. Catching it here keeps the
+            // knowledge in the one place that has it, for import and for the
+            // rehearsal before signing alike.
+            PdfRejection.TOO_LARGE
         } catch (e: Exception) {
             // Damaged, or not a PDF. Not signable either way.
+            //
+            // Deliberately not Throwable: a StackOverflowError out of a
+            // pathologically nested PDF really is a statement about the file, and
+            // it belongs here with the rest of "damaged" -- but it is left to the
+            // caller's guard rather than claimed as a size limit.
             PdfRejection.UNREADABLE
         }
     }

@@ -120,6 +120,10 @@
     <string name="import_rejected_encrypted">パスワード保護された PDF には署名できません。保護を解除してからお試しください。</string>
     <string name="import_rejected_no_pages">この PDF にはページがありません。</string>
     <string name="import_rejected_certified">この PDF は変更が許可されない形で証明されているため、署名を追加できません。</string>
+    <!-- Not import_rejected_unreadable: running out of memory is a limit of this
+         app, not a finding about the file, so a sound PDF is not called damaged
+         as it is refused. Same distinction as document_too_large. -->
+    <string name="import_rejected_too_large">この PDF はこの端末で扱うには大きすぎました。書類が壊れているわけではありません。</string>
     <string name="signature_not_removable">この署名は削除できません</string>
     <string name="back">戻る</string>
     <string name="export_title">共有するファイル名</string>
@@ -172,4 +176,8 @@
     <string name="language_system">端末の設定に従う</string>
     <string name="language_japanese">日本語</string>
     <string name="language_english">English</string>
+    <!-- Only if a licence text could not be read out of the APK, which should not
+         be possible. This screen exists to discharge a licence obligation, so it
+         points at the full text rather than showing an empty card. -->
+    <string name="notice_unavailable">この全文を表示できませんでした。リポジトリで全文を確認できます。</string>
 </resources>

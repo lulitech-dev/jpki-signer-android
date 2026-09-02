@@ -88,6 +88,8 @@ fun messageFor(rejection: PdfRejection): String = stringResource(
         PdfRejection.ENCRYPTED -> R.string.import_rejected_encrypted
         PdfRejection.NO_PAGES -> R.string.import_rejected_no_pages
         PdfRejection.UNREADABLE -> R.string.import_rejected_unreadable
+        // A limit of this app, so it does not borrow the damaged-file sentence.
+        PdfRejection.TOO_LARGE -> R.string.import_rejected_too_large
         PdfRejection.CERTIFIED_NO_CHANGES -> R.string.import_rejected_certified
     },
 )

@@ -2,11 +2,13 @@ package dev.lulitech.jpkisigner.pdf
 
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import org.bouncycastle.asn1.ASN1InputStream
+import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.cms.ContentInfo
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers
 import org.bouncycastle.cert.X509CertificateHolder
-import org.bouncycastle.cms.CMSProcessableByteArray
 import org.bouncycastle.cms.CMSSignedData
 import org.bouncycastle.cms.CMSSignerDigestMismatchException
+import org.bouncycastle.cms.CMSTypedData
 import org.bouncycastle.cms.DefaultCMSSignatureAlgorithmNameGenerator
 import org.bouncycastle.cms.SignerInformation
 import org.bouncycastle.cms.bc.BcRSASignerInfoVerifierBuilder
@@ -16,6 +18,7 @@ import org.bouncycastle.operator.bc.BcDigestCalculatorProvider
 import org.bouncycastle.util.Selector
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.OutputStream
 import java.util.Date
 
 /**
@@ -128,7 +131,7 @@ object SignatureInspector {
                 var error: String? = null
                 runCatching {
                     val signedData = CMSSignedData(
-                        CMSProcessableByteArray(sig.getSignedContent(bytes)),
+                        CoveredBytes(bytes, byteRange),
                         parseContentInfo(sig.getContents(bytes)),
                     )
                     val signers = signedData.signerInfos.signers
@@ -181,6 +184,73 @@ object SignatureInspector {
                     coversWholeDocument = coversAll,
                     verificationError = error,
                 )
+            }
+        }
+    }
+
+    /**
+     * The bytes one signature's ByteRange covers, as a view rather than a copy.
+     *
+     * `PDSignature.getSignedContent(bytes)` returns a fresh `byte[]` of the
+     * covered spans, which for the newest signature is very nearly the whole
+     * file -- and `CMSProcessableByteArray` then holds it for the length of the
+     * RSA verification. Reading a document's history therefore peaked at about
+     * twice its size plus what PDFBox had built from it, which is the same
+     * doubling [PrefixRead] exists to keep out of the boundary pass; both run
+     * back to back over one array in `loadDetail`, so leaving it here undid half
+     * of that. `OutOfMemoryError` is caught rather than fatal on this path, so
+     * the cost was not a crash -- it was `tooLarge` on documents that did fit.
+     *
+     * BouncyCastle only ever streams this into a digest ([write] is the whole
+     * contract exercised by `SignerInformation.verify`), so no copy is needed.
+     *
+     * The ranges are checked here rather than trusted: PDFBox's own reader
+     * refuses a ByteRange that leaves the file, and a bare `write` would instead
+     * throw `IndexOutOfBoundsException` from inside the digest loop. Either way
+     * it lands in [SignatureIntegrity.UNCHECKED], which is the honest answer for
+     * a signature whose covered bytes we cannot even locate -- the check just
+     * makes it deliberate.
+     *
+     * @param byteRange pairs of `offset, length`, as `/ByteRange` stores them.
+     *   Two pairs in every signature this app or the reference writes; iterated
+     *   generically because the format permits more and PDFBox reads them all.
+     */
+    private class CoveredBytes(
+        private val bytes: ByteArray,
+        private val byteRange: IntArray,
+    ) : CMSTypedData {
+
+        init {
+            require(byteRange.size >= 2 && byteRange.size % 2 == 0) {
+                "ByteRange is not a sequence of offset/length pairs: ${byteRange.size} entries"
+            }
+            for (i in byteRange.indices step 2) {
+                val offset = byteRange[i]
+                val length = byteRange[i + 1]
+                // Summed as Long, as [revisionEndOf] does: two large entries
+                // overflow Int into a negative total, which would pass a bound
+                // check written the obvious way.
+                require(
+                    offset >= 0 && length >= 0 &&
+                        offset.toLong() + length <= bytes.size.toLong(),
+                ) {
+                    "ByteRange span $offset+$length lies outside the ${bytes.size}-byte file"
+                }
+            }
+        }
+
+        override fun getContentType(): ASN1ObjectIdentifier = PKCSObjectIdentifiers.data
+
+        /**
+         * Never consulted on the verification path, and deliberately not a copy of
+         * the content -- producing one on demand would reintroduce exactly the
+         * allocation this class removes.
+         */
+        override fun getContent(): Any = this
+
+        override fun write(out: OutputStream) {
+            for (i in byteRange.indices step 2) {
+                out.write(bytes, byteRange[i], byteRange[i + 1])
             }
         }
     }

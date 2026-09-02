@@ -51,11 +51,15 @@ object PdfRevisions {
      * (0-based, oldest first) and every signature after it.
      *
      * @return null when it cannot be done safely -- see [validate]. Callers must
-     *   treat null as "not removable" rather than guessing.
+     *   treat null as "not removable" rather than guessing. A document that could
+     *   not be read answers null here too: nothing can be truncated safely out of
+     *   a file we failed to parse, so for a single signature the two collapse.
+     *   [truncationLengths] keeps them apart, because a screen full of rows hangs
+     *   on the difference.
      */
     fun truncationLengthFor(file: File, index: Int): Long? {
         val bytes = file.readBytes()
-        val revisionEnds = revisionEnds(bytes) ?: return null
+        val revisionEnds = runCatching { revisionEnds(bytes) }.getOrNull() ?: return null
         return truncationLength(bytes, revisionEnds, index)
     }
 
@@ -72,8 +76,17 @@ object PdfRevisions {
      * boundary rather than trusting it, and it is paid once when a document is
      * opened. No prefix is *copied*, though -- see [PrefixRead].
      *
-     * @return an entry per signature, null where that signature is not removable;
-     *   empty when the file cannot be read at all.
+     * @return an entry per signature, null where that signature is not removable.
+     *   **Empty means the document has no signatures**, and nothing else.
+     * @throws Exception if the document could not be read, and [OutOfMemoryError]
+     *   if it did not fit -- neither is answered with a list. Returning `emptyList`
+     *   for a failed read made "we could not check this document" arrive as "this
+     *   document has no signatures", so every row rendered as not removable with
+     *   nothing on screen saying why -- the exact state `DocumentDetailUi.unreadable`
+     *   and `document_partly_unreadable` exist to report, and which they could never
+     *   reach while the failure was swallowed here. Same distinction
+     *   [SignatureInspector.inspect] draws by throwing and [SignatureInspector.count]
+     *   draws by answering null.
      */
     fun truncationLengths(file: File): List<Long?> = truncationLengths(file.readBytes())
 
@@ -85,7 +98,7 @@ object PdfRevisions {
      * a separate full copy of a user's document into memory.
      */
     fun truncationLengths(bytes: ByteArray): List<Long?> {
-        val revisionEnds = revisionEnds(bytes) ?: return emptyList()
+        val revisionEnds = revisionEnds(bytes)
         return revisionEnds.indices.map { truncationLength(bytes, revisionEnds, it) }
     }
 
@@ -106,12 +119,20 @@ object PdfRevisions {
         return boundaryBefore(bytes, revisionEnds[index], floor, expectedSignatures = index)
     }
 
-    /** End offset of each signed revision, oldest first. */
-    private fun revisionEnds(bytes: ByteArray): List<Long>? = runCatching {
+    /**
+     * End offset of each signed revision, oldest first.
+     *
+     * Throws rather than answering null. A document whose signature dictionaries
+     * cannot be read is one we know nothing about, and the empty list this used to
+     * produce is a *claim* -- "no signatures" -- that only a document we actually
+     * parsed earns. The caller is one `read {}` away from being able to tell the
+     * two apart and colour the screen accordingly, and it could not while this
+     * swallowed the failure.
+     */
+    private fun revisionEnds(bytes: ByteArray): List<Long> =
         PDDocument.load(bytes).use { document ->
             document.signatureDictionaries.map { revisionEndOf(it) }.sorted()
         }
-    }.getOrNull()
 
     /**
      * Length the document had when the signature whose revision ends at
@@ -304,15 +325,29 @@ object PdfRevisions {
      * revision end, which some other tool might produce; truncating there would
      * leave a corrupt file. The bounds check also keeps [length] inside `Int`
      * range, which is what makes the prefix copy below safe.
+     *
+     * A prefix that will not parse is answered `false`: that is a finding about
+     * the candidate -- it is not a revision boundary -- and rejecting it is the
+     * whole job here.
+     *
+     * An [Error] is not, and is deliberately allowed out. This runs once per
+     * `%%EOF` candidate per signature, so it is where a large document actually
+     * runs out of memory, and `runCatching` caught that too: the candidate was
+     * rejected as though it had been checked and found wanting, the row came back
+     * "not removable", and the screen said nothing. "We could not check" is not
+     * "we checked, and no" -- the same distinction [SignatureIntegrity] draws
+     * between UNCHECKED and MISMATCH.
      */
     private fun validate(bytes: ByteArray, length: Long, expectedSignatures: Int): Boolean {
         if (length <= 0 || length > bytes.size) return false
-        return runCatching {
+        return try {
             loadPrefix(bytes, length.toInt()).use { document ->
                 document.numberOfPages > 0 &&
                     document.signatureDictionaries.size == expectedSignatures
             }
-        }.getOrDefault(false)
+        } catch (e: Exception) {
+            false
+        }
     }
 
     /**

@@ -5,6 +5,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -94,6 +95,49 @@ class SignatureIntegrityTest {
         assertNotNull(signature.signedAt)
         // Read out of the CMS, which is the part that would not parse.
         assertNull(signature.signerCommonName)
+    }
+
+    /**
+     * The covered bytes are streamed straight out of the array the caller already
+     * holds rather than copied, so the ranges are this code's own to bound -- a
+     * copy would have had PDFBox refuse them on the way out. A span that leaves
+     * the file is no more checkable than a CMS that will not parse, so it lands in
+     * the same place instead of escaping [SignatureInspector.inspect].
+     */
+    @Test
+    fun `a byte range that leaves the file reports no verdict rather than throwing`() {
+        val signed = sign(REASON)
+        val bytes = signed.readBytes()
+
+        // The third ByteRange entry is the offset the covered tail resumes at.
+        // Overwriting its digits with 9s keeps every offset in the file where it
+        // was -- the length does not change -- while putting the span past the end.
+        val digits = thirdByteRangeEntry(bytes)
+        for (i in digits) bytes[i] = '9'.code.toByte()
+        val broken = temp.newFile("out-of-range.pdf").apply { writeBytes(bytes) }
+
+        val range = byteRangeOf(broken)
+        assertTrue(
+            "the fixture must actually leave the file: ${range[2]}+${range[3]} vs ${bytes.size}",
+            range[2].toLong() + range[3] > bytes.size,
+        )
+
+        val signature = SignatureInspector.inspect(broken).single()
+        assertEquals(SignatureIntegrity.UNCHECKED, signature.integrity)
+        assertNotNull(signature.verificationError)
+        // Still readable, because none of this came out of the CMS.
+        assertEquals(REASON, signature.reason)
+    }
+
+    /** Indices of the digits of `/ByteRange [a b c d]`'s third entry. */
+    private fun thirdByteRangeEntry(bytes: ByteArray): IntRange {
+        val text = String(bytes, Charsets.ISO_8859_1)
+        val open = text.indexOf('[', text.indexOf("/ByteRange"))
+        val close = text.indexOf(']', open)
+        val entries = Regex("""\d+""").findAll(text.substring(open, close)).toList()
+        require(entries.size == 4) { "expected four ByteRange entries, got ${entries.size}" }
+        val third = entries[2].range
+        return (open + third.first)..(open + third.last)
     }
 
     private fun sign(reason: String): File {

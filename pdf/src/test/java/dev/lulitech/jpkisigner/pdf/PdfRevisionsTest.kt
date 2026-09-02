@@ -5,6 +5,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPage
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -350,6 +351,40 @@ class PdfRevisionsTest {
     @Test
     fun `an unsigned pdf has no boundaries to list`() {
         assertEquals(emptyList<Long?>(), PdfRevisions.truncationLengths(blank("a.pdf")))
+    }
+
+    /**
+     * An empty list is a claim -- "this document has no signatures" -- and only a
+     * document we actually parsed earns it. A failed read has to arrive as a throw
+     * so the caller can colour the screen for it; while it came back as
+     * `emptyList` the two were indistinguishable, every row rendered as not
+     * removable, and the `document_partly_unreadable` line that exists to say so
+     * could never be reached.
+     */
+    @Test
+    fun `a document that will not parse throws rather than listing nothing`() {
+        val garbage = temp.newFile("garbage.pdf").apply { writeBytes(ByteArray(4096) { 0x41 }) }
+
+        assertThrows(Exception::class.java) { PdfRevisions.truncationLengths(garbage) }
+        assertThrows(Exception::class.java) {
+            PdfRevisions.truncationLengths(garbage.readBytes())
+        }
+
+        // And the answer for a document that really has none is still a list, so
+        // the two cannot be confused in the other direction either.
+        assertEquals(emptyList<Long?>(), PdfRevisions.truncationLengths(blank("sound.pdf")))
+    }
+
+    /**
+     * The per-signature call keeps the lenient contract: its null already means
+     * "not removable", and nothing can be truncated safely out of a file we could
+     * not read, so it does not throw where [truncationLengths] does.
+     */
+    @Test
+    fun `the per-index call still answers null for a document it cannot read`() {
+        val garbage = temp.newFile("garbage2.pdf").apply { writeBytes(ByteArray(4096) { 0x41 }) }
+
+        assertNull(PdfRevisions.truncationLengthFor(garbage, 0))
     }
 
     /**

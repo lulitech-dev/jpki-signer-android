@@ -70,8 +70,16 @@ fun NoticesScreen(modifier: Modifier = Modifier) {
     // Read as one batch and shown only once all of it is in hand. Reading per
     // card would have each one grow a frame or two after it was drawn, which is a
     // worse thing to read than a screen that simply arrives complete.
-    val texts by produceState<List<String>?>(null, notices) {
-        value = withContext(Dispatchers.IO) { notices.map { context.readRaw(it.textRes) } }
+    // Nulls rather than a throw. These are raw resources compiled into the APK, so
+    // failing to read one should not be reachable -- but this block runs in the
+    // composition's own scope, where an escaping exception takes the screen down,
+    // and every other read in the app is guarded. A card that has no text says so
+    // and points at the full text, because an empty card on the one screen that
+    // exists to discharge a licence obligation is the worst of the three outcomes.
+    val texts by produceState<List<String?>?>(null, notices) {
+        value = withContext(Dispatchers.IO) {
+            notices.map { runCatching { context.readRaw(it.textRes) }.getOrNull() }
+        }
     }
     val loaded = texts
 
@@ -107,13 +115,22 @@ fun NoticesScreen(modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        text = text,
-                        // Monospace: these texts are laid out with hard line
-                        // breaks and indentation that a proportional font mangles.
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    if (text == null) {
+                        Text(
+                            stringResource(R.string.notice_unavailable),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else {
+                        Text(
+                            text = text,
+                            // Monospace: these texts are laid out with hard line
+                            // breaks and indentation that a proportional font
+                            // mangles.
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
         }
