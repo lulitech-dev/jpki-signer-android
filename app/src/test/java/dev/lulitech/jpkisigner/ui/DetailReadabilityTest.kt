@@ -55,6 +55,48 @@ class DetailReadabilityTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
+    /**
+     * The guard [MainViewModel.open] claims a serial number for is not open's
+     * alone: a cascade delete reloads the detail too, and published it
+     * unconditionally -- so backing out of a document while the truncation was in
+     * flight put the screen the user had just left straight back on top of the
+     * library.
+     */
+    @Test
+    fun `a cascade delete finishing after the screen was closed does not reopen it`() =
+        runTest(dispatcher) {
+            val id = store.import("contract.pdf", MINIMAL_PDF.inputStream())
+            viewModel.open(id).join()
+            val length = viewModel.detail.value!!.sourceLength
+
+            val job = viewModel.deleteSignatureCascade(id, length, length)
+            viewModel.closeDetail()
+            job.join()
+
+            assertNull(
+                "the user left the detail screen; a late reload must not put it back",
+                viewModel.detail.value,
+            )
+        }
+
+    /**
+     * The library still has to be re-read, though: the truncation landed on disk
+     * whatever became of the screen it was started from.
+     */
+    @Test
+    fun `a cascade delete refreshes the library even when the screen is gone`() =
+        runTest(dispatcher) {
+            val id = store.import("contract.pdf", MINIMAL_PDF.inputStream())
+            viewModel.open(id).join()
+            val length = viewModel.detail.value!!.sourceLength
+
+            val job = viewModel.deleteSignatureCascade(id, length - 1, length)
+            viewModel.closeDetail()
+            job.join()
+
+            assertEquals(listOf(id), viewModel.documents.value.map { it.id })
+        }
+
     @Test
     fun `an unsigned document reads as unsigned, not as unreadable`() = runTest(dispatcher) {
         val id = store.import("contract.pdf", MINIMAL_PDF.inputStream())

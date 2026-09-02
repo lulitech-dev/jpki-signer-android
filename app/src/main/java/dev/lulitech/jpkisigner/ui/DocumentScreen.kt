@@ -264,6 +264,30 @@ fun DocumentScreen(
             }
         }
 
+        // Part of the document was read and part was not, so what is above is
+        // some of its history rather than all of it.
+        //
+        // The empty-state text above says this too, but only where there is
+        // nothing to show. A read can fail after the signatures were found and
+        // before the boundaries were -- the boundary pass parses a prefix per
+        // candidate, so it is the expensive half -- and the flags were then
+        // computed and silently dropped: the rows appeared, every one of them
+        // marked unremovable, with nothing on screen saying why.
+        if (detail.unreadable && detail.rows.isNotEmpty()) {
+            Text(
+                stringResource(
+                    if (detail.tooLarge) {
+                        R.string.document_partly_too_large
+                    } else {
+                        R.string.document_partly_unreadable
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+
         // Bytes exist that no signature covers. Unlike the per-row line this
         // removed, this is genuinely exceptional: a clean append-only chain
         // always ends with its newest signature reaching end-of-file.

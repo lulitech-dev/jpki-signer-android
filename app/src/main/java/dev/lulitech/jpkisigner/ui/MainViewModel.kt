@@ -84,6 +84,14 @@ data class DocumentDetailUi(
      * not a finding about the file.
      */
     val tooLarge: Boolean = false,
+    /**
+     * The file length [rows] were read from.
+     *
+     * Travels with the boundaries derived from it, because a boundary is only a
+     * boundary of those bytes -- see `DocumentStore.truncate`. Zero when nothing
+     * was read, which no removable row can exist under.
+     */
+    val sourceLength: Long = 0L,
 )
 
 /** The signing sheet: which document it is for, and where the flow has got to. */
@@ -210,6 +218,13 @@ class MainViewModel(
     }
 
     init {
+        // Once per ViewModel, never per refresh: a sweep is not synchronised
+        // against an import, and running one on every listing would eventually
+        // race a copy in progress. The age bound in the store is what makes even
+        // this safe -- see `DocumentStore.sweepAbandonedImports`.
+        viewModelScope.launch {
+            withContext(io) { orElse(Unit) { store.sweepAbandonedImports() } }
+        }
         refresh()
     }
 
@@ -326,17 +341,34 @@ class MainViewModel(
     /**
      * Removes a signature and every signature after it by truncating the head
      * file to [truncateTo], a revision boundary derived from the PDF.
+     *
+     * @param provenLength the length the document had when [truncateTo] was
+     *   derived from it. The store refuses the truncation if the file is no
+     *   longer that file.
      */
-    fun deleteSignatureCascade(id: String, truncateTo: Long) = viewModelScope.launch {
-        _detail.value = withContext(io) {
-            // Guarded because [truncateTo] came from an earlier read: the store
-            // rejects a length the file no longer has, and the reload below then
-            // shows the boundaries as they actually are. A stale offset is a
-            // reason to redraw the screen, not to take the process down.
-            orElse(Unit) { store.truncate(id, truncateTo) }
-            loadDetail(id)
+    fun deleteSignatureCascade(id: String, truncateTo: Long, provenLength: Long): Job {
+        // Claimed before launching, exactly as [open] does. The truncation lands
+        // on disk either way, but the reload after it must not put a document
+        // back on screen that the user has since closed -- which is what this
+        // published unconditionally, undoing the guard [open] exists to provide.
+        val request = detailRequest.incrementAndGet()
+        return viewModelScope.launch {
+            val loaded = withContext(io) {
+                // Guarded because [truncateTo] came from an earlier read: the
+                // store rejects it if the document is not the one it was proved
+                // against, and the reload below then shows the boundaries as they
+                // actually are. A stale offset is a reason to redraw the screen,
+                // not to take the process down.
+                orElse(Unit) { store.truncate(id, truncateTo, provenLength) }
+                loadDetail(id)
+            }
+            // Unconditional: the file on disk changed whatever became of the
+            // screen, so the library has to be re-read either way.
+            refresh()
+            if (request != detailRequest.get()) return@launch
+            _detail.value = loaded
+            _detailLoading.value = false
         }
-        refresh()
     }
 
     fun reloadDetail(id: String) = open(id)
@@ -529,6 +561,7 @@ class MainViewModel(
             // we failed to parse.
             unreadable = failed,
             tooLarge = failed && ranOutOfMemory,
+            sourceLength = bytes?.size?.toLong() ?: 0L,
         )
     }
 

@@ -107,14 +107,56 @@ class DocumentStore(private val root: File) {
      *
      * Because a PDF incremental update never rewrites the original bytes, the
      * result is the byte-identical earlier revision.
+     *
+     * @param provenLength the length the file had when [length] was proved
+     *   against it. A boundary is only a boundary of the bytes it was derived
+     *   from: the offset reaches the caller through a screen, and a document that
+     *   gained a signature in between would still accept the old offset -- it is
+     *   below the new length -- and lose more revisions than the confirmation
+     *   named. Bounding by the *current* length only catches the case where the
+     *   file shrank, which is the harmless direction.
      */
-    fun truncate(id: String, length: Long) {
+    fun truncate(id: String, length: Long, provenLength: Long) {
         val document = requireNotNull(read(id)) { "no such document: $id" }
-        require(length in 1..document.head.length()) {
-            "truncation length $length outside 1..${document.head.length()}"
+        val current = document.head.length()
+        require(current == provenLength) {
+            "document changed since the boundary was computed: $current != $provenLength"
+        }
+        require(length in 1..current) {
+            "truncation length $length outside 1..$current"
         }
         java.io.RandomAccessFile(document.head, "rw").use { it.setLength(length) }
     }
+
+    /**
+     * Removes directories left behind by an import that never finished.
+     *
+     * [import] deletes its own directory when the copy throws, but a process
+     * killed mid-copy never reaches that. What is left is a directory holding
+     * only a staging file, which [list] skips for want of a `.pdf` -- so it is
+     * invisible and accumulates, which is the outcome [import] documents wanting
+     * to avoid.
+     *
+     * Only directories older than [ABANDONED_AFTER_MS] are touched, and the age
+     * comes from the id's own epoch prefix rather than from the filesystem. A
+     * sweep is not synchronised against an import, and two of them can overlap:
+     * an activity recreation builds a second store over the same root while the
+     * retained ViewModel is still copying. Deleting only what is an hour old
+     * cannot reach a copy still in progress, and a directory this cannot date --
+     * anything not named like an id -- is left alone entirely.
+     */
+    fun sweepAbandonedImports(now: Long = System.currentTimeMillis()) {
+        for (dir in root.listFiles { f: File -> f.isDirectory } ?: emptyArray()) {
+            if (contentFileOf(dir) != null) continue
+            val importedAt = importTimeOf(dir.name) ?: continue
+            if (now - importedAt < ABANDONED_AFTER_MS) continue
+            dir.deleteRecursively()
+        }
+    }
+
+    /** Epoch milliseconds from an id built by [newId], or null if it is not one. */
+    private fun importTimeOf(id: String): Long? =
+        ID_SHAPE.matchEntire(id)?.groupValues?.get(1)?.toLongOrNull()
 
     private fun read(id: String): StoredDocument? {
         val dir = File(root, id)
@@ -145,5 +187,15 @@ class DocumentStore(private val root: File) {
 
     private companion object {
         const val STAGING = "staging.part"
+
+        /**
+         * How old a directory with no document in it has to be before a sweep
+         * will remove it. Generous: an import is a file copy, and even a large
+         * one over a slow provider is minutes rather than hours.
+         */
+        const val ABANDONED_AFTER_MS = 60 * 60 * 1000L
+
+        /** Exactly what [newId] produces, so nothing else is ever dated by it. */
+        val ID_SHAPE = Regex("""(\d{13})-[0-9a-f]{8}""")
     }
 }

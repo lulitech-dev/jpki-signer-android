@@ -278,7 +278,14 @@ class MainActivity : AppCompatActivity() {
                             // Joined, so the screen can hold the swept rows off
                             // screen until the reloaded detail is published rather
                             // than letting them spring back mid-delete.
-                            viewModel.deleteSignatureCascade(current.id, truncateTo).join()
+                            viewModel.deleteSignatureCascade(
+                                current.id,
+                                truncateTo,
+                                // The length the boundary was proved against, so
+                                // the store can refuse it if the document is no
+                                // longer that document.
+                                current.sourceLength,
+                            ).join()
                         },
                         onBack = viewModel::closeDetail,
                     )

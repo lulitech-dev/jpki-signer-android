@@ -2,6 +2,7 @@ package dev.lulitech.jpkisigner.data
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -122,7 +123,7 @@ class DocumentStoreTest {
         val head = store.get(id)!!.head
 
         head.appendBytes("--APPENDED".toByteArray())
-        store.truncate(id, original.size.toLong())
+        store.truncate(id, original.size.toLong(), provenLength = head.length())
 
         assertArrayEquals(
             "must be byte-identical to the original",
@@ -134,7 +135,35 @@ class DocumentStoreTest {
     @Test
     fun `truncating past the end of the file is rejected`() {
         val id = import("a.pdf", "SHORT".toByteArray())
-        assertThrows(IllegalArgumentException::class.java) { store.truncate(id, 9999L) }
+        assertThrows(IllegalArgumentException::class.java) {
+            store.truncate(id, 9999L, provenLength = 5L)
+        }
+    }
+
+    /**
+     * A boundary is a boundary of the bytes it was proved against, and the offset
+     * reaches the store through a screen. Bounding it by the file's *current*
+     * length only catches a document that shrank, which is the harmless
+     * direction: one that grew still accepts the old offset and loses more
+     * revisions than the confirmation named.
+     */
+    @Test
+    fun `truncating a document that grew since the boundary was proved is rejected`() {
+        val original = "ORIGINAL".toByteArray()
+        val id = import("a.pdf", original)
+        val head = store.get(id)!!.head
+        val proven = head.length()
+
+        head.appendBytes("--A-WHOLE-NEW-REVISION".toByteArray())
+
+        assertThrows(IllegalArgumentException::class.java) {
+            store.truncate(id, original.size.toLong(), provenLength = proven)
+        }
+        assertEquals(
+            "nothing may be removed from a document we did not prove the boundary against",
+            proven + "--A-WHOLE-NEW-REVISION".length,
+            store.get(id)!!.head.length(),
+        )
     }
 
     /**
@@ -244,6 +273,65 @@ class DocumentStoreTest {
     @Test
     fun `truncating to zero is rejected`() {
         val id = import("a.pdf", "SHORT".toByteArray())
-        assertThrows(IllegalArgumentException::class.java) { store.truncate(id, 0L) }
+        assertThrows(IllegalArgumentException::class.java) {
+            store.truncate(id, 0L, provenLength = 5L)
+        }
+    }
+
+    /**
+     * A process killed mid-copy never reaches [DocumentStore.import]'s own
+     * cleanup, leaving a directory holding only a staging file. `list` skips it
+     * for want of a `.pdf`, so it is invisible and would otherwise accumulate for
+     * as long as the app is installed.
+     */
+    @Test
+    fun `an abandoned import is swept once it is old enough`() {
+        val root = temp.root.resolve("documents")
+        val abandoned = root.resolve("1700000000000-0000abcd")
+        abandoned.mkdirs()
+        abandoned.resolve("staging.part").writeBytes("half a document".toByteArray())
+
+        store.sweepAbandonedImports(now = 1700000000000L + 2 * 60 * 60 * 1000L)
+
+        assertFalse("nothing here is reachable, so nothing here should stay", abandoned.exists())
+    }
+
+    /**
+     * A sweep is not synchronised against an import, and an activity recreation
+     * can build a second store over the same root while the retained ViewModel is
+     * still copying. The age bound is what keeps the two apart.
+     */
+    @Test
+    fun `a recent import in progress is left alone`() {
+        val root = temp.root.resolve("documents")
+        val inProgress = root.resolve("1700000000000-0000abcd")
+        inProgress.mkdirs()
+        inProgress.resolve("staging.part").writeBytes("still being copied".toByteArray())
+
+        store.sweepAbandonedImports(now = 1700000000000L + 1000L)
+
+        assertTrue("a copy in progress must survive a sweep", inProgress.exists())
+    }
+
+    /** Only directories this store could have named are ever dated, or removed. */
+    @Test
+    fun `a directory that is not one of our ids is never swept`() {
+        val root = temp.root.resolve("documents")
+        val foreign = root.resolve("not-an-id")
+        foreign.mkdirs()
+
+        store.sweepAbandonedImports(now = Long.MAX_VALUE)
+
+        assertTrue(foreign.exists())
+    }
+
+    /** A real document is not an abandoned import, however old it is. */
+    @Test
+    fun `a finished import survives a sweep`() {
+        val id = import("a.pdf", "PDF".toByteArray())
+
+        store.sweepAbandonedImports(now = Long.MAX_VALUE)
+
+        assertEquals("a.pdf", store.get(id)?.displayName)
     }
 }

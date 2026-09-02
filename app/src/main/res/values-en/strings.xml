@@ -90,7 +90,7 @@
     <string name="a11y_delete_document">Delete \"%1$s\"</string>
     <string name="a11y_delete_signature">Delete signature #%1$d</string>
     <plurals name="a11y_delete_signature_cascade">
-        <item quantity="one">Delete signature #%1$d and the %2$d after it</item>
+        <item quantity="one">Delete signature #%1$d and the one after it</item>
         <item quantity="other">Delete signature #%1$d and the %2$d after it</item>
     </plurals>
     <string name="import_rejected_unreadable">This PDF could not be read. It may be damaged, or not a PDF at all.</string>
@@ -111,6 +111,13 @@
          document_unreadable, which says the document is damaged.
     -->
     <string name="document_too_large">This document is too large for this device to check, so its signatures cannot be shown or removed. There is nothing wrong with the document itself.</string>
+    <!--
+         Part of the document was read and part was not, so the history shown is
+         incomplete. Distinct from document_unreadable / document_too_large,
+         which stand in place of a history rather than beside one.
+    -->
+    <string name="document_partly_unreadable">Part of this document could not be read. The list of signatures may be incomplete, and none of them can be removed.</string>
+    <string name="document_partly_too_large">This document is too large for this device to check in full, so only part of it was read. The list of signatures may be incomplete, and none of them can be removed. There is nothing wrong with the document itself.</string>
     <string name="document_trailing_changes">This document was changed after the last signature.</string>
     <string name="sign_changes_not_permitted">This document does not permit changes, so it cannot be signed.</string>
     <string name="documents_import_hint">Share a PDF from another app to add it here.</string>

@@ -47,7 +47,6 @@ value class StatusWord(val value: Int) {
     companion object {
         const val SUCCESS = 0x9000
         const val PIN_BLOCKED = 0x6983
-        const val SECURITY_NOT_SATISFIED = 0x6982
         const val FILE_NOT_FOUND = 0x6A82
         const val WRONG_LENGTH = 0x6700
 
