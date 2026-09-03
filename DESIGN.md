@@ -357,6 +357,42 @@ sits inside the signed byte range, and so it moves the `messageDigest` and with 
 the whole 256-byte RSA signature. The reference differs *from itself* across two
 runs by the same 31 bytes of that field. Nothing else in either file varies.
 
+**Finally checked against the real thing.** All of the above was a replay with a
+software key, because jpki-pdf-signer needs a Windows card reader. It was later
+run for real (an Android phone as a Bluetooth reader via JPKIMobile), signing the
+same two documents with the same cards. The differences, measured rather than
+modelled:
+
+| | 払込証明書 (1 signature) | 定款 (2 signatures, 2 cards) |
+|---|---|---|
+| keys compared | 77 | 139 |
+| keys differing | 8 | 10 |
+
+and the differing keys are only: the filename and size; `contents.header`,
+`indefiniteLength`, `isCanonicalDer` (DER against BER); `contents.reservedBytes`
+(16384 against 9472); and `propBuild.App.Name` / `.REx`. The first two groups are
+what this section changed, so the current build differs from the reference in
+`/Prop_Build` alone. Nothing unexpected appeared — not in the certificate bags,
+the signed attributes, the algorithm identifiers, the ByteRange shapes, or the
+dictionary keys.
+
+And once this section's changes were in, the same documents were signed again by
+the current build and compared with the reference's output from the same cards:
+
+| | keys compared | keys differing |
+|---|---|---|
+| 払込証明書, one signature | 77 | **4** |
+| 定款, two signatures | 147 | **6** |
+
+The differing keys are the filename, the file size, and `propBuild.App.Name` /
+`.REx` once per signature. Nothing else. The size delta is 6 bytes per signature,
+which is the length of `/JPKI#20Signer` against `/JPKI#20PDF#20SIGNER` — so even
+the byte count is fully accounted for by the app naming itself.
+
+`/Prop_Build` is left as ours. It is the region the filing system's own table
+dismisses with 「その他領域 設定値は問いません」, and writing another product's name
+there would misstate what produced the file.
+
 Two further cases were checked the same way, both byte-identical:
 
 - **The composite name.** A 署名用証明書 issued to a foreign resident can carry

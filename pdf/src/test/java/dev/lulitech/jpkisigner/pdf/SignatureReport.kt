@@ -1,5 +1,7 @@
 package dev.lulitech.jpkisigner.pdf
 
+import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.interactive.digitalsignature.PDSignature
 import org.bouncycastle.asn1.ASN1Encoding
@@ -67,21 +69,35 @@ import java.util.Locale
  *    `CALG_SHA_256`) and signs a PKCS#1 v1.5 DigestInfo, which is exactly what
  *    the card's COMPUTE DIGITAL SIGNATURE does.
  *
- * Two things differ, and both are what this report exists to show:
+ * ### Measured against real signatures, same documents, same card
  *
- *  1. **Encoding.** The reference calls `CMSSignedData.getEncoded()` with no
- *     argument and lands on **BER**: `30 80`, four indefinite-length segments,
- *     EOC terminated. We call `getEncoded(ASN1Encoding.DER)` and emit `30 82`,
- *     definite length. DESIGN.md 5.1a argues for DER and the PDF spec requires it
- *     for `adbe.pkcs7.detached` -- but the accepted implementation is the BER one,
- *     so this is a real difference rather than a settled question.
- *  2. **The certificate bag.** The reference embeds exactly two, always:
- *     `getCertificate()` and `getRootCertificate()`. We embed the signer plus
- *     whatever `JpkiKey.caCertificateEf` reads, and `readCaCertificate` answers
- *     null for a missing EF -- which would leave a verifier one certificate to
- *     build a path from. That EF is the one part of the card layer DESIGN.md still
- *     marks unconfirmed, so [SignatureReport] prints the subject and issuer of
- *     every certificate in the bag.
+ * jpki-pdf-signer was eventually run on the real files (2026-09-04, Android phone
+ * as a Bluetooth reader), so the comparison no longer rests on a replay with a
+ * software key. Signing the same two documents with the same card:
+ *
+ *  - 払込証明書, one signature: **8 of 77 keys differ**
+ *  - 定款, two signatures by two different cards: **10 of 139 keys differ**
+ *
+ * and every one of them is accounted for:
+ *
+ *  1. `file.name` / `file.bytes` -- trivially.
+ *  2. `contents.header`, `indefiniteLength`, `isCanonicalDer` -- DER against BER.
+ *  3. `contents.reservedBytes` -- 16384 against PDFBox's default 9472.
+ *  4. `propBuild.App.Name` / `.REx` -- `/JPKI Signer (1.0.0)` against
+ *     `/JPKI PDF SIGNER (1.2.7)`.
+ *
+ * (2) and (3) were what DESIGN.md 5.1b changed, so a signature made by the current
+ * build differs from the reference only in (4), plus the trailer `/ID` and the
+ * clock. Everything else matched: both certificate bags, every subject, issuer,
+ * key usage and policy OID, all four signed attributes and their order, the
+ * algorithm identifiers, the ByteRange shape, the dictionary keys, and the
+ * per-signature verdicts.
+ *
+ * The certificate bag in particular is settled: the reference embeds
+ * `getCertificate()` plus `getRootCertificate()`, we embed the signer plus
+ * `JpkiKey.caCertificateEf`, and on a real card those come out the same -- the
+ * published `signca03.cer`. This report prints every certificate's subject and
+ * issuer so that stays checkable.
  */
 object SignatureReport {
 
@@ -136,6 +152,25 @@ object SignatureReport {
         out.line("$prefix.dict.Changes", if (dict.getDictionaryObject("Changes") == null) ABSENT else PRESENT)
         out.line("$prefix.dict.Reference", if (dict.getDictionaryObject("Reference") == null) ABSENT else PRESENT)
         out.line("$prefix.dict.keys", dict.keySet().map { it.name }.sorted().joinToString(","))
+
+        // /Prop_Build names the software that produced the signature. Reported
+        // because it is the one field two implementations were found to differ in
+        // once everything else had been equalised -- and because it was invisible
+        // here while only the dictionary's key *names* were compared.
+        val propBuild = dict.getDictionaryObject(PROP_BUILD) as? COSDictionary
+        if (propBuild == null) {
+            out.line("$prefix.propBuild", ABSENT)
+        } else {
+            out.line("$prefix.propBuild.keys", propBuild.keySet().map { it.name }.sorted().joinToString(","))
+            val app = propBuild.getDictionaryObject(COSName.APP) as? COSDictionary
+            if (app == null) {
+                out.line("$prefix.propBuild.App", ABSENT)
+            } else {
+                for (key in app.keySet().sortedBy { it.name }) {
+                    out.line("$prefix.propBuild.App.${key.name}", cosValue(app.getDictionaryObject(key)))
+                }
+            }
+        }
 
         val byteRange = sig.byteRange
         out.line("$prefix.byteRange.entries", byteRange.size)
@@ -315,8 +350,19 @@ object SignatureReport {
 
     // --- rendering helpers ---------------------------------------------------
 
+    private val PROP_BUILD: COSName = COSName.getPDFName("Prop_Build")
+
     private const val ABSENT = "(absent)"
     private const val PRESENT = "(present)"
+
+    /** A COS value as written, so `/Name` being a name object rather than a string shows. */
+    private fun cosValue(value: com.tom_roush.pdfbox.cos.COSBase?): String = when (value) {
+        null -> ABSENT
+        is COSName -> "/" + value.name
+        is com.tom_roush.pdfbox.cos.COSString -> "(" + value.string + ")"
+        is com.tom_roush.pdfbox.cos.COSBoolean -> value.value.toString()
+        else -> value.toString()
+    }
 
     private fun present(value: String?): String =
         if (value.isNullOrEmpty()) ABSENT else "(present, ${value.length} chars)"
