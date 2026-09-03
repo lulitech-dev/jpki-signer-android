@@ -377,8 +377,22 @@ Two further cases were checked the same way, both byte-identical:
   already-signed file and the reference through `saveIncremental`, agrees byte for
   byte too. `pdfsig` calls both signatures valid.
 
+A third difference was suspected and turned out not to be one. The reference
+embeds the middleware's `getRootCertificate()`; we embed whatever
+`JpkiKey.caCertificateEf` (EF `0x0002`) returns, and that EF was the last thing
+here never checked against a card. It has been now: the DER read off a real card
+is byte-identical to `signca03.cer` published by the 署名用認証局 — SHA-256
+`d227f6cde11d35c5252178f106f843d2…`, self-signed, valid 2023-07-16 to 2033-07-15,
+and the issuer named by the 署名用証明書 beside it. The card and the middleware
+supply the same bytes.
+
 So the remaining differences between the two implementations are: none. The
-scaffolding for the comparison was deliberately not kept — it needs a second JVM
+one thing the comparison held equal and production does not is `/Prop_Build`:
+ours writes `/Name /JPKI#20Signer` and `/REx (1.0.0)`, the reference
+`/JPKI#20PDF#20SIGNER` and its own version. That region is the one the filing
+system's own table dismisses with 「その他領域 設定値は問いません」, and copying
+another product's name into it would misstate what produced the file, so it is
+left alone. The scaffolding for the comparison was deliberately not kept — it needs a second JVM
 with BouncyCastle 1.72 and desktop PDFBox, and a temporary hook to pin the
 document id — but the procedure is above and takes about ten minutes to rebuild.
 
