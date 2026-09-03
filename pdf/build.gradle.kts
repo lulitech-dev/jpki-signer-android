@@ -23,6 +23,19 @@ android {
     }
 }
 
+// Hands SignatureReportTest the files to report on. Gradle does not forward -D to
+// the test JVM, and a daemon's inherited environment goes stale, so the two flags
+// are passed as project properties and set explicitly here:
+//
+//   ./gradlew :pdf:testDebugUnitTest --tests '*SignatureReportTest*' \
+//     -Pcompare=/path/rejected.pdf,/path/accepted.pdf -Pverbose=true
+tasks.withType<Test>().configureEach {
+    (project.findProperty("compare") as String?)?.let { systemProperty("jpki.compare", it) }
+    (project.findProperty("verbose") as String?)?.let { systemProperty("jpki.verbose", it) }
+    // The report is the output, so it has to reach the console even on success.
+    testLogging { showStandardStreams = true }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)

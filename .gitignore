@@ -17,3 +17,7 @@ jpki-pdf-signer/
 # cite is tracked in DESIGN.md instead.
 PLAN.md
 CLAUDE.md
+
+# Scratch space for real signed documents under diagnosis. These carry a
+# 署名用証明書, so they must never be committed.
+tmp/
