@@ -96,7 +96,13 @@ class PdfSigner(private val provider: SignatureProvider) {
             }
 
             SignatureOptions().use { options ->
-                options.preferredSignatureSize = PREFERRED_SIGNATURE_SIZE
+                // preferredSignatureSize is deliberately left alone, so /Contents
+                // reserves PDFBox's own DEFAULT_SIGNATURE_SIZE (9472). This used
+                // to be raised to 16384 for headroom; the reference implementation
+                // passes no SignatureOptions at all for an invisible signature and
+                // therefore gets the default, and matching its output byte shape
+                // matters more than headroom we were not using -- a real CMS with
+                // the signer and CA certificates measures under 4 KB.
                 document.addSignature(signature, options)
 
                 FileOutputStream(output).use { out ->
@@ -108,14 +114,5 @@ class PdfSigner(private val provider: SignatureProvider) {
                 }
             }
         }
-    }
-
-    private companion object {
-        /**
-         * Reserved /Contents space. A CMS with the signer certificate plus the CA
-         * certificate lands around 3–4 KB; this leaves generous headroom, and
-         * unused space is harmless zero padding.
-         */
-        const val PREFERRED_SIGNATURE_SIZE = 16384
     }
 }

@@ -1,6 +1,5 @@
 package dev.lulitech.jpkisigner.pdf
 
-import org.bouncycastle.asn1.ASN1Encoding
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.DERNull
 import org.bouncycastle.asn1.nist.NISTObjectIdentifiers
@@ -36,7 +35,7 @@ internal object CmsBuilder {
 
     /**
      * @param content the PDF bytes covered by the signature's ByteRange.
-     * @return DER-encoded CMS SignedData, detached (content not embedded).
+     * @return BER-encoded CMS SignedData, detached (content not embedded).
      */
     fun buildDetached(content: InputStream, provider: SignatureProvider): ByteArray {
         val signerCert = X509CertificateHolder(provider.signerCertificate())
@@ -45,8 +44,9 @@ internal object CmsBuilder {
             provider.caCertificate()?.let { add(X509CertificateHolder(it)) }
         }
 
-        // Default signed attributes: contentType, messageDigest, signingTime.
-        // BouncyCastle handles the DER SET OF vs [0] IMPLICIT tagging difference
+        // BouncyCastle's default signed attributes: contentType, messageDigest,
+        // signingTime and cmsAlgorithmProtect -- the same four, in the same order,
+        // as the reference implementation produces. BouncyCastle handles the DER SET OF vs [0] IMPLICIT tagging difference
         // between hashing signedAttrs and embedding them in the SignerInfo,
         // which is the classic source of signatures that encode fine and
         // verify nowhere.
@@ -59,14 +59,22 @@ internal object CmsBuilder {
             addCertificates(CollectionStore(chain))
         }
 
-        // DER, explicitly. BouncyCastle defaults to BER when the content is
-        // streamed, which emits an indefinite-length SEQUENCE (30 80) terminated
-        // by 00 00 end-of-contents octets. PDFBox then zero-pads /Contents out to
-        // the reserved size, and a BER parser reads that padding as a sea of EOC
-        // markers and fails with "IOException reading content". DER is also what
-        // the PDF spec requires for adbe.pkcs7.detached.
+        // `getEncoded()`, not `getEncoded(DER)`, which lands on BER: an
+        // indefinite-length SEQUENCE (30 80) terminated by end-of-contents
+        // octets. That is deliberately the *less* standards-correct choice and it
+        // reverses what this line used to do -- see DESIGN.md §5.1a for the whole
+        // argument. In short: it is byte-for-byte what jpki-pdf-signer emits, that
+        // implementation is accepted by the filing system, and ours was not.
+        //
+        // The reason originally given for DER does not survive measurement.
+        // Padding was the worry -- PDFBox zero-pads /Contents to the reserved
+        // size, so a verifier is handed the object followed by junk -- but that
+        // affects both encodings identically: `ASN1Primitive.fromByteArray` on the
+        // padded buffer throws "Extra data detected in stream" for DER *and* BER,
+        // while `CMSSignedData(byte[])`, `ASN1InputStream`, openssl and
+        // poppler/NSS all accept both. No verifier tested tells them apart.
         return generator.generate(StreamedContent(content), false)
-            .getEncoded(ASN1Encoding.DER)
+            .getEncoded()
     }
 
     /**

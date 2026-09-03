@@ -45,8 +45,8 @@ class SignatureReportTest {
         // The properties a reader of this report should not have to re-check.
         assertTrue("must be a detached PKCS#7", report.contains("adbe.pkcs7.detached"))
         assertTrue(
-            "a streamed generator would emit an indefinite-length SEQUENCE; DESIGN.md 5.1a",
-            report.contains("indefiniteLength = false"),
+            "BER, matching jpki-pdf-signer byte shape; DESIGN.md 5.1a",
+            report.contains("indefiniteLength = true"),
         )
         assertTrue("a detached signature must not embed the content", report.contains("eContentPresent = false"))
     }

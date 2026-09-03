@@ -285,12 +285,9 @@ Two defects that both produce a signature which *encodes* fine and verifies
 nowhere — the silent-failure class that argued for using BouncyCastle rather than
 hand-rolled DER:
 
-- **Emit DER, not BER.** `CMSSignedDataGenerator.generate()` defaults to BER when
-  the content is streamed, producing an indefinite-length `SEQUENCE` (`30 80`)
-  terminated by `00 00` end-of-contents octets. PDFBox then zero-pads `/Contents`
-  to the reserved size, and a BER parser reads that padding as a sea of EOC
-  markers. Use `getEncoded(ASN1Encoding.DER)` — which is what the PDF spec
-  requires for `adbe.pkcs7.detached` regardless.
+- **~~Emit DER, not BER.~~ Reversed — we emit BER, deliberately.** See
+  §5.1b below. The claim that padding breaks a BER parser does not survive
+  measurement, and the implementation the filing system accepts emits BER.
 - **`/Contents` is always padded, so parse it as a stream.**
   `CMSSignedData(byte[])` routes through `ASN1Primitive.fromByteArray`, which is
   strict and throws `IOException: Extra data detected in stream` on the trailing
@@ -299,6 +296,103 @@ hand-rolled DER:
 Also: do **not** close the `InputStream` from
 `ExternalSigningSupport.getContent()`. It is backed by PDFBox's writer, and
 closing it corrupts the output being assembled.
+
+### §5.1b Matching jpki-pdf-signer's byte shape
+
+Signatures this app produced were refused by 法務省's 登記・供託オンライン申請
+システム — reported only as an error "on the signature part", with no indication of
+which field. They are not defective by any measure available offline: our own
+inspector, `openssl cms -verify` and `pdfsig` (poppler/NSS) all call them valid,
+the certificate chain is complete and correct, the certificates are current, and
+`/SigFlags` and the signature fields are as PDFBox writes them.
+
+So the approach became: stop reasoning about the format and copy, byte shape for
+byte shape, an implementation known to be accepted. jpki-pdf-signer is that
+implementation — widely used in Japanese accounting practice for exactly this
+filing. Its CMS and PDF construction were read out of its own
+`jpki-wrapper-internal64.jar` (`JPKISignatureInterface.sign`,
+`JPKIContentSigner`, `JpkiWrapperImpl.addSignature`) and replayed against the
+BouncyCastle **1.72** and PDFBox **2.0.27** it pins, with a software key, so only
+the construction varied.
+
+Already identical, and therefore ruled out: the signed attributes (contentType,
+signingTime, **cmsAlgorithmProtect**, messageDigest — all four, same order),
+`signatureAlgorithm` = `sha256WithRSAEncryption`+NULL, `digestAlgorithm` = sha256
+with absent parameters, issuerAndSerialNumber, detached with no `eContent`, every
+signature-dictionary key, and the PDF-level incremental update — `saveIncremental`
+and `saveIncrementalForExternalSigning` produce structurally identical output.
+
+Three differences existed, and all three are now gone:
+
+| | jpki-pdf-signer | ours, before | ours, now |
+|---|---|---|---|
+| `/Contents` encoding | BER, `30 80` | DER, `30 82` | BER, `30 80` |
+| `/Contents` reserved | 9472 (PDFBox default) | 16384 | 9472 |
+| `cmsAlgorithmProtect` | present | briefly removed | present |
+
+The `cmsAlgorithmProtect` removal was a mistake of ours, made while assuming the
+attribute postdated the Adobe specification 法務省 cites and so could not be
+expected — true, but irrelevant once the accepted implementation is known to emit
+it. It was reverted.
+
+**None of the three has any demonstrable effect.** Both encodings were tried under
+BouncyCastle 1.72, BouncyCastle 1.85, `openssl` and poppler/NSS, padded and
+unpadded, strict and streaming: every combination accepts both, identically —
+`ASN1Primitive.fromByteArray` on a padded buffer throws
+"Extra data detected in stream" for DER *and* BER alike, which is what retires the
+original §5.1a argument. So this is not a fix with a mechanism behind it. It is
+the elimination of every gratuitous difference from software that works, which is
+what remains once the format itself has been cleared.
+
+**The two now produce byte-identical files.** Verified rather than argued: with
+the same RSA key and certificates, the same input PDF, the same `/M`, the same CMS
+`signingTime`, matching `/Prop_Build`, and PDFBox's trailer `/ID` pinned via
+`PDDocument.setDocumentId`, our output and jpki-pdf-signer's have the same
+SHA-256 — 20398 bytes, `5b22e66d45b9d9a23ad20fa569b7bd13052670cb1a4fda679…`.
+
+Getting there needed one control. Before the `/ID` was pinned the two files
+differed in 569 bytes, which looks alarming and is not: the trailer's second `/ID`
+element is derived from `System.currentTimeMillis()` when no document id is set, it
+sits inside the signed byte range, and so it moves the `messageDigest` and with it
+the whole 256-byte RSA signature. The reference differs *from itself* across two
+runs by the same 31 bytes of that field. Nothing else in either file varies.
+
+Two further cases were checked the same way, both byte-identical:
+
+- **The composite name.** A 署名用証明書 issued to a foreign resident can carry
+  the romanised and 漢字 names in a *single* JPKI name field joined by `＿`
+  (U+FF3F) — `ＨＵＡＮＧ　ＴＺ　ＨＵＡＮ＿黄　子桓`. A fixture certificate was built
+  carrying exactly that, and our side derived `/Name` from the extension while the
+  reference was handed the string directly, standing in for the middleware's
+  `JPKIUserCertBasicData.getName()`. Same SHA-256, and the same 18-character
+  `/Name`. So `CertificateNames.holderName` reads the field verbatim, separator
+  included, and writes it exactly as the reference does. Whether a *verifier*
+  should be shown a composite like that is a separate question, and not one either
+  implementation answers differently.
+- **Multiple signatures, applied one after another.** Two fixture keys, signed in
+  sequence, which is the shape the real 定款 is in: `/Name` 18 characters then 12,
+  the first signature no longer reaching end-of-file, the second doing so, two
+  certificates in each bag. Same SHA-256 at both steps — so the second incremental
+  update, where ours goes through `saveIncrementalForExternalSigning` on an
+  already-signed file and the reference through `saveIncremental`, agrees byte for
+  byte too. `pdfsig` calls both signatures valid.
+
+So the remaining differences between the two implementations are: none. The
+scaffolding for the comparison was deliberately not kept — it needs a second JVM
+with BouncyCastle 1.72 and desktop PDFBox, and a temporary hook to pin the
+document id — but the procedure is above and takes about ten minutes to rebuild.
+
+`SignatureReport` in `pdf`'s test source set is what these comparisons were made
+with, and it is kept so the next one is cheap:
+
+```sh
+./gradlew :pdf:testDebugUnitTest --tests '*SignatureReportTest*' \
+  -Pcompare=/path/a.pdf,/path/b.pdf
+```
+
+If a signature this app produces is ever accepted, the DER form is worth
+retrying — it is what the PDF specification requires, and the reason for
+preferring BER is only that it is what the working implementation does.
 
 ### §5.2 Dependency hygiene
 
