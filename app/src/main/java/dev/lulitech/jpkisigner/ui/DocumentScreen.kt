@@ -192,11 +192,8 @@ fun DocumentScreen(
                 onDragStopped = { if (!finishBackGesture()) settle() },
             ),
     ) {
-        Text(
-            detail.displayName,
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(16.dp),
-        )
+        // The document's name is the app bar's title while this screen is up, so
+        // it is deliberately not repeated here.
 
         if (detail.rows.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
