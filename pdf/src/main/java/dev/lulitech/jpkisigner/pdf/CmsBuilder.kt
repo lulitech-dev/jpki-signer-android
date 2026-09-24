@@ -62,9 +62,9 @@ internal object CmsBuilder {
         // `getEncoded()`, not `getEncoded(DER)`, which lands on BER: an
         // indefinite-length SEQUENCE (30 80) terminated by end-of-contents
         // octets. That is deliberately the *less* standards-correct choice and it
-        // reverses what this line used to do -- see DESIGN.md §5.1a for the whole
-        // argument. In short: it is byte-for-byte what jpki-pdf-signer emits, that
-        // implementation is accepted by the filing system, and ours was not.
+        // reverses what this line used to do: it is byte-for-byte what the
+        // reference implementation emits, and matching that implementation is the
+        // rule -- see DESIGN.md §5.1b.
         //
         // The reason originally given for DER does not survive measurement.
         // Padding was the worry -- PDFBox zero-pads /Contents to the reserved

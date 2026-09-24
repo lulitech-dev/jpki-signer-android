@@ -190,7 +190,7 @@ object SignatureReport {
         out.line("$prefix.contents.reservedBytes", contents.size)
         // The BER-vs-DER trap: a streamed CMSSignedDataGenerator emits an
         // indefinite-length SEQUENCE (30 80) which PDFBox's zero padding then
-        // turns into a sea of end-of-contents octets. See DESIGN.md §5.1a.
+        // turns into a sea of end-of-contents octets. See DESIGN.md §5.1b.
         out.line("$prefix.contents.header", contents.take(2).toHex())
         out.line("$prefix.contents.indefiniteLength", contents.size > 1 && contents[1] == 0x80.toByte())
 

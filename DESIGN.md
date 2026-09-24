@@ -48,7 +48,7 @@ Two things are referred to throughout:
 
 ```
 app/    Compose UI, NFC reader-mode host, PIN entry
-jpki/   card layer — IsoDep + APDUs.  No PDFBox, no BouncyCastle.
+jpki/   card layer — IsoDep + APDUs.  Ships no PDFBox, no BouncyCastle.
 pdf/    PDFBox-Android + CMS assembly.  No NFC.
 ```
 
@@ -70,7 +70,11 @@ Consequences worth preserving:
   failure and both are followed, bounded, in `JpkiSession.sendForData` — but
   never anywhere near `VERIFY`, which reissues nothing.
 - Neither module can reach for the other's dependencies, so the card layer
-  cannot acquire a PDF parser and the PDF layer cannot acquire NFC.
+  cannot acquire a PDF parser and the PDF layer cannot acquire NFC. The one
+  crossing is a `testImplementation` of BouncyCastle in `:jpki`, which exists to
+  check `DigestInfo`'s hardcoded prefix against a real ASN.1 encoder — the
+  shipped card layer imports none of it, which is the point of hardcoding the
+  prefix rather than depending on an encoder to build it.
 
 ### §3.1 Signing flow (single card tap)
 
@@ -310,7 +314,7 @@ routes to AOSP's stripped fork — whose contents have been shrinking since API
 |---|---|
 | `JcaDigestCalculatorProviderBuilder` | `BcDigestCalculatorProvider` |
 | `JcaSignerInfoGeneratorBuilder` | `SignerInfoGeneratorBuilder(...)` |
-| `JcaCertStore` + `CertificateFactory` | `CollectionStore(...Holder)` |
+| `JcaCertStore` + `CertificateFactory` | `CollectionStore` of holders |
 | `DefaultSignatureAlgorithmIdentifierFinder` | our own `ContentSigner` |
 
 The last row makes this easy: the `ContentSigner` was always going to be ours,
@@ -328,21 +332,20 @@ and TLS bulk; see `app/proguard-rules.pro`.
 
 ### §5.1a CMS encoding gotchas
 
-Two defects that both produce a signature which *encodes* fine and verifies
-nowhere — the silent-failure class that argued for using BouncyCastle rather
-than hand-rolled DER:
+Two ways to produce a signature that *encodes* fine and verifies nowhere — the
+silent-failure class that argued for using BouncyCastle rather than hand-rolled
+DER:
 
-- **~~Emit DER, not BER.~~ Reversed — we emit BER, deliberately.** See §5.1b
-  below: the claim that padding breaks a BER parser does not survive
-  measurement, and BER is what the reference implementation emits.
 - **`/Contents` is always padded, so parse it as a stream.**
   `CMSSignedData(byte[])` routes through `ASN1Primitive.fromByteArray`, which is
   strict and throws `IOException: Extra data detected in stream` on the trailing
   zeros. Read one object via `ASN1InputStream` and ignore the remainder.
+- **Do not close the `InputStream` from `ExternalSigningSupport.getContent()`.**
+  It is backed by PDFBox's writer, and closing it corrupts the output being
+  assembled.
 
-Also: do **not** close the `InputStream` from
-`ExternalSigningSupport.getContent()`. It is backed by PDFBox's writer, and
-closing it corrupts the output being assembled.
+Whether that CMS is DER or BER is settled in §5.1b, not here: this section once
+argued for DER, and the argument did not survive measurement.
 
 ### §5.1b Matching jpki-pdf-signer's byte shape
 

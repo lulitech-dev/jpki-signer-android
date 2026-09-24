@@ -29,16 +29,20 @@ leave through the Android share sheet. There are no file pickers.
 | Module | Contents |
 |---|---|
 | `app` | Compose UI, NFC reader-mode host, PIN entry, document store |
-| `jpki` | Card layer: `IsoDep` and APDUs. No PDFBox, no BouncyCastle. |
+| `jpki` | Card layer: `IsoDep` and APDUs. Ships no PDFBox or BouncyCastle. |
 | `pdf` | PDFBox-Android and CMS assembly. No NFC. |
 
 `jpki` and `pdf` exchange only byte arrays, which is what lets each be tested
 without the other — and lets the whole PDF/CMS path be verified with a software
 RSA key, no card and no phone.
 
+`jpki` does take BouncyCastle as a `testImplementation`, to check its hardcoded
+DigestInfo prefix against a real ASN.1 encoder. Nothing in the shipped card
+layer imports it.
+
 ## Building
 
-Requires JDK 21 and the Android SDK (`compileSdk` 36).
+Built with JDK 21 and the Android SDK (`compileSdk` 36).
 
 ```sh
 ./gradlew test          # all unit tests, no device needed
