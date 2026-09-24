@@ -45,11 +45,11 @@ internal object CmsBuilder {
         }
 
         // BouncyCastle's default signed attributes: contentType, messageDigest,
-        // signingTime and cmsAlgorithmProtect -- the same four, in the same order,
-        // as the reference implementation produces. BouncyCastle handles the DER SET OF vs [0] IMPLICIT tagging difference
-        // between hashing signedAttrs and embedding them in the SignerInfo,
-        // which is the classic source of signatures that encode fine and
-        // verify nowhere.
+        // signingTime and cmsAlgorithmProtect -- the same four, in the same
+        // order, as the reference implementation produces. BouncyCastle handles
+        // the DER SET OF vs [0] IMPLICIT tagging difference between hashing
+        // signedAttrs and embedding them in the SignerInfo, which is the classic
+        // source of signatures that encode fine and verify nowhere.
         val signerInfo: SignerInfoGenerator =
             SignerInfoGeneratorBuilder(BcDigestCalculatorProvider())
                 .build(CardContentSigner(provider), signerCert)

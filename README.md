@@ -8,20 +8,21 @@ seal — together with its 印鑑証明書, so it stands in for one wherever a d
 calls for it. Registration (登記) filings with **Japan's Ministry of Justice**
 (法務省) are the case it has been tested against, not the limit of its use.
 
-- **Offline by construction.** No `INTERNET` permission. Nothing is uploaded, and
-  there is no timestamp authority.
+- **Offline by construction.** No `INTERNET` permission. Nothing is uploaded,
+  and there is no timestamp authority.
 - **Approval signatures only.** The app never writes a DocMDP certification, and
   refuses to sign a document that is certified against further change.
 - **Signature history read from the PDF**, not from a local log, so imported and
-  co-signed documents behave identically to ones signed here. Removing a signature
-  truncates to a revision boundary and yields the byte-identical earlier revision.
-- **It claims nothing it cannot prove.** Revocation needs network, so the app says
-  nothing positive about a signature at all and speaks only when something is
-  wrong. Confirming a signature is the job of the PDF署名プラグイン from **Japan's
-  Ministry of Justice** (法務省).
+  co-signed documents behave identically to ones signed here. Removing a
+  signature truncates to a revision boundary and yields the byte-identical
+  earlier revision.
+- **It claims nothing it cannot prove.** Revocation needs network, so the app
+  says nothing positive about a signature at all and speaks only when something
+  is wrong. Confirming a signature is the job of the PDF署名プラグイン from
+  **Japan's Ministry of Justice** (法務省).
 
-PDFs arrive by share-in (`ACTION_SEND`) or "Open with" (`ACTION_VIEW`), and leave
-through the Android share sheet. There are no file pickers.
+PDFs arrive by share-in (`ACTION_SEND`) or "Open with" (`ACTION_VIEW`), and
+leave through the Android share sheet. There are no file pickers.
 
 ## Modules
 
@@ -44,13 +45,14 @@ Requires JDK 21 and the Android SDK (`compileSdk` 36).
 ./gradlew assembleDebug
 ```
 
-`CardDebugActivity` is a card bring-up screen in `app/src/debug` only: it verifies
-PINs and logs certificate subjects, so it is not present in a release build.
+`CardDebugActivity` is a card bring-up screen in `app/src/debug` only: it
+verifies PINs and logs certificate subjects, so it is not present in a release
+build.
 
 Design decisions, and the rationale the source comments cite, are in
 [DESIGN.md](DESIGN.md).
 
 ## Licence
 
-BSD 2-Clause. See [LICENSE](LICENSE). Third-party notices ship in the app and are
-reachable from the About dialog.
+BSD 2-Clause. See [LICENSE](LICENSE). Third-party notices ship in the app and
+are reachable from the About dialog.

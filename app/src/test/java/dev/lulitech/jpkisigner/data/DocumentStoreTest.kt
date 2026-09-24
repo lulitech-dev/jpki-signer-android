@@ -257,8 +257,6 @@ class DocumentStoreTest {
         assertEquals("a_b.pdf", document.displayName)
     }
 
-    
-    
     /** A .part left by a crash mid-import must not be mistaken for the document. */
     @Test
     fun `a stale staging file is ignored`() {
