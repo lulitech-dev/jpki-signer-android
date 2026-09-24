@@ -54,7 +54,7 @@ verifies PINs and logs certificate subjects, so it is not present in a release
 build.
 
 Design decisions, and the rationale the source comments cite, are in
-[DESIGN.md](DESIGN.md).
+[DESIGN.md](DESIGN.md). Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Licence
 
