@@ -1,8 +1,7 @@
 # Design notes
 
-The decisions the source comments cite, in the numbering they cite. `PLAN.md` is
-untracked working notes; this file is the tracked subset that the code refers to,
-so a fresh clone can follow every `DESIGN.md §x` reference in a comment.
+The decisions the source comments cite, in the numbering they cite, so a fresh
+clone can follow every `DESIGN.md §x` reference in a comment.
 
 ---
 
@@ -22,6 +21,22 @@ so a fresh clone can follow every `DESIGN.md §x` reference in a comment.
 | App id | `dev.lulitech.jpkisigner` |
 | Licence | BSD 2-Clause, © LULITECH G.K. / ルリテック合同会社 |
 | Notices | Full licence texts ship in the app, reachable from About |
+
+Two things are referred to throughout:
+
+- **The filing system** — 登記・供託オンライン申請システム, the online application
+  system of **Japan's Ministry of Justice** (法務省), covering registration (登記)
+  and deposit (供託) procedures. Its own PDF署名プラグイン is the verifier that
+  confirms a signature; this app never claims to. It is where these signatures have
+  been tested, not the limit of where they are good — see the README.
+- **The reference implementation** —
+  [jpki-pdf-signer](https://github.com/hirukawa/jpki-pdf-signer) (JPKI PDF SIGNER,
+  © 2017-2023 HIRUKAWA Ryo), a desktop signer in wide use in Japanese practice for
+  exactly this filing. The signing logic here is based on it, and it is the
+  yardstick for what output the filing system accepts — §5.1b matches its byte
+  shape deliberately. It is not a dependency: it needs the JPKI middleware and a
+  desktop card reader, neither of which exists on Android, so the card layer is
+  ours. Its licence ships in the app, reachable from About.
 
 ---
 
@@ -80,13 +95,17 @@ Documents live in `filesDir/documents/<id>/<the file's real name>`. The id is in
 the directory name so it never reaches a recipient; the filename is the display
 name, because `FileProvider` reports a file's on-disk name when sharing out.
 
-The signed file is assembled as `signing.part` in the same directory, under a
-**fixed** name rather than one derived from the document's. A stored name is
-allowed to reach NAME_MAX (255 bytes) exactly, so a suffix on top of one cannot be
-created at all — and being discovered only during the write, it used to cost a
-PIN attempt on a document that could never have been signed. It is not a `.pdf`,
-so the library cannot see it, and the rehearsal in §6 sweeps any copy a killed run
-left behind.
+Signing writes to a temporary `signing.part` in the same directory and replaces
+the document with it by a single `rename` once it is complete, so a run that fails
+leaves the original byte-identical. Imports stage the same way, as `staging.part`.
+
+`signing.part` is a **fixed** name rather than one derived from the document's: a
+stored name may reach NAME_MAX (255 bytes) exactly, so a suffix on top of one
+cannot be created at all — and being discovered only during the write, that used to
+cost a PIN attempt on a document that could never have been signed. Neither
+staging file is a `.pdf`, so the library cannot see them; the rehearsal in §6
+sweeps a `signing.part` left by a killed run, and
+`DocumentStore.sweepAbandonedImports` a `staging.part` older than an hour.
 
 Signed documents are sensitive, so `res/xml/data_extraction_rules.xml` excludes
 everything from both cloud backup and device-to-device transfer, and
@@ -212,8 +231,8 @@ A revoked signing certificate passes every offline check available here. **So th
 app states nothing positive about a signature at all.** A success message would be
 worth little — a user cannot act on "this checked out" — and any positive
 statement invites being read as the app confirming the signature, which it is in
-no position to do. Confirming a signature is the 法務省 plugin's job. The UI
-speaks only when something is wrong.
+no position to do. Confirming a signature is the filing system's job, not ours.
+The UI speaks only when something is wrong.
 
 ### §3.4 Swipe-to-delete and the cascade
 
@@ -247,6 +266,25 @@ against all changes. That refusal happens at import (`PdfValidator`), and again 
 the rehearsal before the first APDU, so it cannot land after a PIN attempt has
 been spent. `PdfSigner` checks a third time as a last line of defence, before it
 asks the card for anything.
+
+### §3.6 Export reports nothing, because nothing is observable
+
+Sharing a signed PDF ends at `startActivity` on the chooser. There is deliberately
+no "shared" confirmation, because no honest one can be built.
+
+The tempting signal is `Intent.createChooser`'s third argument, an `IntentSender`
+the system fires with `EXTRA_CHOSEN_COMPONENT`. It looks like a completion callback
+and is not one: it fires when the user *picks* a target, before that app has
+launched, let alone read the file or been used to send anything — and nothing
+arrives at all if the user backs out, so waiting on it would wait forever. The
+receiving app then reads through `FileProvider` on its own schedule, possibly after
+this process is gone, and a read is still not a successful share.
+
+A message built on that is redundant when things work — the user just watched the
+target app open — and wrong when they do not, since a target that crashes on launch
+is indistinguishable from one that succeeded. So export says nothing, and the share
+sheet appearing is the feedback. Same discipline as the signature rows in §3.3:
+report a problem, stay silent rather than imply a verification we cannot perform.
 
 ---
 
@@ -286,8 +324,8 @@ nowhere — the silent-failure class that argued for using BouncyCastle rather t
 hand-rolled DER:
 
 - **~~Emit DER, not BER.~~ Reversed — we emit BER, deliberately.** See
-  §5.1b below. The claim that padding breaks a BER parser does not survive
-  measurement, and the implementation the filing system accepts emits BER.
+  §5.1b below: the claim that padding breaks a BER parser does not survive
+  measurement, and BER is what the reference implementation emits.
 - **`/Contents` is always padded, so parse it as a stream.**
   `CMSSignedData(byte[])` routes through `ASN1Primitive.fromByteArray`, which is
   strict and throws `IOException: Extra data detected in stream` on the trailing
@@ -299,150 +337,37 @@ closing it corrupts the output being assembled.
 
 ### §5.1b Matching jpki-pdf-signer's byte shape
 
-Signatures this app produced were refused by 法務省's 登記・供託オンライン申請
-システム — reported only as an error "on the signature part", with no indication of
-which field. They are not defective by any measure available offline: our own
-inspector, `openssl cms -verify` and `pdfsig` (poppler/NSS) all call them valid,
-the certificate chain is complete and correct, the certificates are current, and
-`/SigFlags` and the signature fields are as PDFBox writes them.
+The CMS and PDF construction are matched to the reference implementation byte for
+byte. It is the software the filing system is known to accept, and no verifier
+available here distinguishes the choices below — so where there is a free choice,
+its answer is taken rather than ours. Its construction was read out of its own
+`jpki-wrapper-internal64.jar` and replayed against the BouncyCastle **1.72** and
+PDFBox **2.0.27** it pins.
 
-So the approach became: stop reasoning about the format and copy, byte shape for
-byte shape, an implementation known to be accepted. jpki-pdf-signer is that
-implementation — widely used in Japanese accounting practice for exactly this
-filing. Its CMS and PDF construction were read out of its own
-`jpki-wrapper-internal64.jar` (`JPKISignatureInterface.sign`,
-`JPKIContentSigner`, `JpkiWrapperImpl.addSignature`) and replayed against the
-BouncyCastle **1.72** and PDFBox **2.0.27** it pins, with a software key, so only
-the construction varied.
+What that settles:
 
-Already identical, and therefore ruled out: the signed attributes (contentType,
-signingTime, **cmsAlgorithmProtect**, messageDigest — all four, same order),
-`signatureAlgorithm` = `sha256WithRSAEncryption`+NULL, `digestAlgorithm` = sha256
-with absent parameters, issuerAndSerialNumber, detached with no `eContent`, every
-signature-dictionary key, and the PDF-level incremental update — `saveIncremental`
-and `saveIncrementalForExternalSigning` produce structurally identical output.
+- **BER, not DER** — an indefinite-length SEQUENCE (`30 80`) closed by
+  end-of-contents octets. This reverses §5.1a.
+- **`/Contents` reserved at PDFBox's default 9472 bytes**, not raised.
+- **`cmsAlgorithmProtect` kept**, i.e. BouncyCastle's default signed attributes.
 
-Three differences existed, and all three are now gone:
+Output is byte-identical to the reference's for one signature or for multiple
+signatures applied in sequence. What differs is only what must: the trailer `/ID`,
+the signing time, and `/Prop_Build`.
 
-| | jpki-pdf-signer | ours, before | ours, now |
-|---|---|---|---|
-| `/Contents` encoding | BER, `30 80` | DER, `30 82` | BER, `30 80` |
-| `/Contents` reserved | 9472 (PDFBox default) | 16384 | 9472 |
-| `cmsAlgorithmProtect` | present | briefly removed | present |
-
-The `cmsAlgorithmProtect` removal was a mistake of ours, made while assuming the
-attribute postdated the Adobe specification 法務省 cites and so could not be
-expected — true, but irrelevant once the accepted implementation is known to emit
-it. It was reverted.
-
-**None of the three has any demonstrable effect.** Both encodings were tried under
-BouncyCastle 1.72, BouncyCastle 1.85, `openssl` and poppler/NSS, padded and
-unpadded, strict and streaming: every combination accepts both, identically —
-`ASN1Primitive.fromByteArray` on a padded buffer throws
-"Extra data detected in stream" for DER *and* BER alike, which is what retires the
-original §5.1a argument. So this is not a fix with a mechanism behind it. It is
-the elimination of every gratuitous difference from software that works, which is
-what remains once the format itself has been cleared.
-
-**The two now produce byte-identical files.** Verified rather than argued: with
-the same RSA key and certificates, the same input PDF, the same `/M`, the same CMS
-`signingTime`, matching `/Prop_Build`, and PDFBox's trailer `/ID` pinned via
-`PDDocument.setDocumentId`, our output and jpki-pdf-signer's have the same
-SHA-256 — 20398 bytes, `5b22e66d45b9d9a23ad20fa569b7bd13052670cb1a4fda679…`.
-
-Getting there needed one control. Before the `/ID` was pinned the two files
-differed in 569 bytes, which looks alarming and is not: the trailer's second `/ID`
-element is derived from `System.currentTimeMillis()` when no document id is set, it
-sits inside the signed byte range, and so it moves the `messageDigest` and with it
-the whole 256-byte RSA signature. The reference differs *from itself* across two
-runs by the same 31 bytes of that field. Nothing else in either file varies.
-
-**Finally checked against the real thing.** All of the above was a replay with a
-software key, because jpki-pdf-signer needs a Windows card reader. It was later
-run for real (an Android phone as a Bluetooth reader via JPKIMobile), signing the
-same two documents with the same cards. The differences, measured rather than
-modelled:
-
-| | 払込証明書 (1 signature) | 定款 (2 signatures, 2 cards) |
-|---|---|---|
-| keys compared | 77 | 139 |
-| keys differing | 8 | 10 |
-
-and the differing keys are only: the filename and size; `contents.header`,
-`indefiniteLength`, `isCanonicalDer` (DER against BER); `contents.reservedBytes`
-(16384 against 9472); and `propBuild.App.Name` / `.REx`. The first two groups are
-what this section changed, so the current build differs from the reference in
-`/Prop_Build` alone. Nothing unexpected appeared — not in the certificate bags,
-the signed attributes, the algorithm identifiers, the ByteRange shapes, or the
-dictionary keys.
-
-And once this section's changes were in, the same documents were signed again by
-the current build and compared with the reference's output from the same cards:
-
-| | keys compared | keys differing |
-|---|---|---|
-| 払込証明書, one signature | 77 | **4** |
-| 定款, two signatures | 147 | **6** |
-
-The differing keys are the filename, the file size, and `propBuild.App.Name` /
-`.REx` once per signature. Nothing else. The size delta is 6 bytes per signature,
-which is the length of `/JPKI#20Signer` against `/JPKI#20PDF#20SIGNER` — so even
-the byte count is fully accounted for by the app naming itself.
-
-`/Prop_Build` is left as ours. It is the region the filing system's own table
+`/Prop_Build` is deliberately ours. It is the region the filing system's own table
 dismisses with 「その他領域 設定値は問いません」, and writing another product's name
 there would misstate what produced the file.
 
-Two further cases were checked the same way, both byte-identical:
+Signatures this app produces are accepted by the filing system.
 
-- **The composite name.** A 署名用証明書 issued to a foreign resident can carry
-  the romanised and 漢字 names in a *single* JPKI name field joined by `＿`
-  (U+FF3F) — `ＨＵＡＮＧ　ＴＺ　ＨＵＡＮ＿黄　子桓`. A fixture certificate was built
-  carrying exactly that, and our side derived `/Name` from the extension while the
-  reference was handed the string directly, standing in for the middleware's
-  `JPKIUserCertBasicData.getName()`. Same SHA-256, and the same 18-character
-  `/Name`. So `CertificateNames.holderName` reads the field verbatim, separator
-  included, and writes it exactly as the reference does. Whether a *verifier*
-  should be shown a composite like that is a separate question, and not one either
-  implementation answers differently.
-- **Multiple signatures, applied one after another.** Two fixture keys, signed in
-  sequence, which is the shape the real 定款 is in: `/Name` 18 characters then 12,
-  the first signature no longer reaching end-of-file, the second doing so, two
-  certificates in each bag. Same SHA-256 at both steps — so the second incremental
-  update, where ours goes through `saveIncrementalForExternalSigning` on an
-  already-signed file and the reference through `saveIncremental`, agrees byte for
-  byte too. `pdfsig` calls both signatures valid.
-
-A third difference was suspected and turned out not to be one. The reference
-embeds the middleware's `getRootCertificate()`; we embed whatever
-`JpkiKey.caCertificateEf` (EF `0x0002`) returns, and that EF was the last thing
-here never checked against a card. It has been now: the DER read off a real card
-is byte-identical to `signca03.cer` published by the 署名用認証局 — SHA-256
-`d227f6cde11d35c5252178f106f843d2…`, self-signed, valid 2023-07-16 to 2033-07-15,
-and the issuer named by the 署名用証明書 beside it. The card and the middleware
-supply the same bytes.
-
-So the remaining differences between the two implementations are: none. The
-one thing the comparison held equal and production does not is `/Prop_Build`:
-ours writes `/Name /JPKI#20Signer` and `/REx (1.0.0)`, the reference
-`/JPKI#20PDF#20SIGNER` and its own version. That region is the one the filing
-system's own table dismisses with 「その他領域 設定値は問いません」, and copying
-another product's name into it would misstate what produced the file, so it is
-left alone. The scaffolding for the comparison was deliberately not kept — it needs a second JVM
-with BouncyCastle 1.72 and desktop PDFBox, and a temporary hook to pin the
-document id — but the procedure is above and takes about ten minutes to rebuild.
-
-`SignatureReport` in `pdf`'s test source set is what these comparisons were made
-with, and it is kept so the next one is cheap:
+`SignatureReport`, in `pdf`'s test source set, is what the comparison is made with,
+and is kept so the next one is cheap:
 
 ```sh
 ./gradlew :pdf:testDebugUnitTest --tests '*SignatureReportTest*' \
   -Pcompare=/path/a.pdf,/path/b.pdf
 ```
-
-If a signature this app produces is ever accepted, the DER form is worth
-retrying — it is what the PDF specification requires, and the reason for
-preferring BER is only that it is what the working implementation does.
 
 ### §5.2 Dependency hygiene
 
